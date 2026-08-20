@@ -7,15 +7,20 @@
 #        ./run.sh query-transform        (M2.5 QueryTransformer — 재작성 + Transform/Retrieve/Rerank 파이프라인, 콘솔)
 #        ./run.sh lab23                  (RAG를 도구로 쓰기 — Agentic RAG, 콘솔)
 #        ./run.sh lab24                  (콘솔 RAG 챗봇 — Advisor+Tool 조합, 대화형)
+#        ./run.sh lab24-api              (같은 챗봇의 Swagger 버전, 브라우저)
 set -euo pipefail
 cd "$(dirname "$0")"
 
 case "${1:-}" in
+  lab24-api)
+    echo "Lab2.4 챗봇 Swagger 버전 실행 중... 뜨면 http://localhost:8080/swagger-ui/index.html 접속"
+    ./mvnw spring-boot:run -Dspring-boot.run.profiles=lab24-api
+    ;;
   chunking-strategies|mmr|lab21|lab22|query-transform|lab23|lab24)
     ./mvnw spring-boot:run -Dspring-boot.run.profiles="$1"
     ;;
   *)
-    echo "사용법: ./run.sh <chunking-strategies|mmr|lab21|lab22|query-transform|lab23|lab24>>"
+    echo "사용법: ./run.sh <chunking-strategies|mmr|lab21|lab22|query-transform|lab23|lab24|lab24-api>"
     exit 1
     ;;
 esac
