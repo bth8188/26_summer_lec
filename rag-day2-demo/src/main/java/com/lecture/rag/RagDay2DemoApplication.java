@@ -27,11 +27,9 @@ public class RagDay2DemoApplication {
            ChatClient chatClient = chatClientBuilder
                     .defaultSystem("당신은 친절한 AI 어시스턴트입니다. 검색된 문서나 도구의 결과에 정보가 없다면, 지어내지 말고 반드시 '모른다'고 대답하세요.")
                     .defaultAdvisors(
-                            // 1. Advisor 생성자 변경 (Builder 사용)
                             QuestionAnswerAdvisor.builder(pgVectorStore).build(),
                             new SimpleLoggerAdvisor()
                     )
-                    // 2. 메서드 이름 변경: defaultFunctions -> defaultTools
                     .defaultTools("jejuWiki")
                     .build();
 
