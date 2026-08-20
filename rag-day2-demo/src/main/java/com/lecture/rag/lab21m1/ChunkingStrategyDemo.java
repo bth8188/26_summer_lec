@@ -7,6 +7,7 @@ import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
+import org.springframework.ai.reader.TextReader;
 
 import java.util.List;
 
@@ -43,13 +44,17 @@ public class ChunkingStrategyDemo implements CommandLineRunner {
     }
 
     private Document loadFullText(String file) {
-        PagePdfDocumentReader reader = new PagePdfDocumentReader("classpath:/scenarios/" + file);
-        List<Document> pages = reader.get();
-        String combined = pages.stream().map(Document::getText).reduce("", (a, b) -> a + "\n\n" + b);
-        // PDF 텍스트 추출 시 폰트 렌더링 때문에 단어 사이 공백이 비정상적으로 커지는 경우가 있어
-        // (예: "물탱크    용량은") 청킹 전에 공백을 정규화하지 않으면 실제 글자 수보다 훨씬 길게 잡힘
-        combined = combined.replaceAll("[ \\t]+", " ");
-        return new Document(combined);
+        if (file.endsWith(".pdf")) {
+            PagePdfDocumentReader reader = new PagePdfDocumentReader("classpath:/scenarios/" + file);
+            List<Document> pages = reader.get();
+            String combined = pages.stream().map(Document::getText).reduce("", (a, b) -> a + "\n\n" + b);
+            combined = combined.replaceAll("[ \\t]+", " ");
+            return new Document(combined);
+        } else {
+            TextReader reader = new TextReader("classpath:/scenarios/" + file);
+            List<Document> docs = reader.get();
+            return docs.get(0);
+        }
     }
 
     private void compareFixedVsRecursive() {

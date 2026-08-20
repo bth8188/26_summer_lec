@@ -2,7 +2,7 @@ spring:
   application:
     name: rag-day2-demo
   datasource:
-    url: jdbc:postgresql://localhost:5432/ragdb
+    url: jdbc:postgresql://192.168.217.223:5432/ragdb
     username: postgres
     password: postgres
   ai:
