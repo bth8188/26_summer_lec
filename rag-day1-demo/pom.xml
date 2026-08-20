@@ -47,6 +47,9 @@
 			<groupId>org.springframework.ai</groupId>
 			<artifactId>spring-ai-vector-store-advisor</artifactId>
 		</dependency>
+		<!-- Lab1.2는 주입받은 PgVectorStore를, Lab1.3은 PgVectorStore.builder(...)를 쓴다.
+		     PgVectorStoreAutoConfiguration은 spring.ai.vectorstore.type=pgvector 일 때만 켜지고
+		     application.yml에서 기본값을 none으로 꺼두므로, 다른 프로필은 DB 없이 그대로 동작한다. -->
 		<dependency>
 			<groupId>org.springframework.ai</groupId>
 			<artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
