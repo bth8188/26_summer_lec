@@ -11,6 +11,7 @@ rem        run.bat query-transform        (M2.5 QueryTransformer — 재작성 +
 rem        run.bat lab23                  (RAG를 도구로 쓰기 — Agentic RAG, 콘솔)
 rem        run.bat lab24                  (콘솔 RAG 챗봇 — Advisor+Tool 조합, 대화형)
 rem        run.bat lab24-api              (같은 챗봇의 Swagger 버전, 브라우저)
+rem        run.bat lab25                  (사서 챗봇 — 관계 테이블 SQL + 벡터 검색 도구 2개, 대화형)
 
 cd /d "%~dp0"
 
@@ -21,6 +22,7 @@ if "%~1"=="lab22" call mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=%~1 &
 if "%~1"=="query-transform" call mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=%~1 & goto :eof
 if "%~1"=="lab23" call mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=%~1 & goto :eof
 if "%~1"=="lab24" call mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=%~1 & goto :eof
+if "%~1"=="lab25" call mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=%~1 & goto :eof
 
 if "%~1"=="lab24-api" (
     echo Lab2.4 챗봇 Swagger 버전 실행 중... 뜨면 http://localhost:8080/swagger-ui/index.html 접속
@@ -28,5 +30,5 @@ if "%~1"=="lab24-api" (
     goto :eof
 )
 
-echo 사용법: run.bat ^<chunking-strategies^|mmr^|lab21^|lab22^|query-transform^|lab23^|lab24^|lab24-api^>
+echo 사용법: run.bat ^<chunking-strategies^|mmr^|lab21^|lab22^|query-transform^|lab23^|lab24^|lab24-api^|lab25^>
 exit /b 1
