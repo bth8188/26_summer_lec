@@ -97,6 +97,13 @@ public class DocumentCatalog {
                 """, "%" + keyword + "%", "%" + keyword + "%");
     }
 
+    /** 단건 조회 — 없으면 null. */
+    public Map<String, Object> findById(int id) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT id, title, category, doc_type, char_count, chunk_count FROM document WHERE id = ?", id);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     /** 벡터 검색 결과의 document_id를 사람이 읽을 수 있는 출처 문자열로 바꾼다. */
     public String titleOf(int documentId) {
         List<String> titles = jdbc.queryForList(
