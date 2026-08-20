@@ -1,20 +1,18 @@
 spring:
   application:
     name: rag-day1-demo
-  servlet:
-    multipart:
-      max-file-size: 20MB   # 기본값 1MB — Lab1.4 PDF 업로드에서 413 나는 걸 막기 위해 올림
-      max-request-size: 20MB
-  # Lab1.3의 buildPgVectorStore()에서 JdbcTemplate 주입용으로만 씀 (PGVector가 실제로 안 떠 있어도 앱은 정상 기동됨 — Hikari는 지연 연결)
+  # Lab1.2(자동 주입된 PgVectorStore)와 Lab1.3(buildPgVectorStore()가 JdbcTemplate을 직접 씀) 양쪽이 쓴다.
+  # 이 블록은 공통 자리에 있어야 한다 — pgvector 의존성이 spring-boot-starter-jdbc를 끌고 오기 때문에
+  # url이 없으면 프로필과 무관하게 "Failed to configure a DataSource"로 기동이 실패한다.
+  # 커넥션 풀은 첫 쿼리 때 열리므로 다른 프로필에서는 DB가 꺼져 있어도 상관없다(실측 확인).
   datasource:
     url: jdbc:postgresql://localhost:5432/ragdb
     username: postgres
     password: postgres
-  # PgVectorStoreAutoConfiguration을 꺼서, VectorStore 빈이 앱 기동 시 자동으로 만들어지지 않게 한다.
-  # (꺼두지 않으면 PGVector가 안 떠 있을 때 Day1의 모든 프로필이 기동 시점에 죽어버림 — Lab1.3에서는 PgVectorStore.builder(...)로 직접 만들어서 쓸 것이므로 자동 생성은 불필요)
-  autoconfigure:
-    exclude:
-      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+  servlet:
+    multipart:
+      max-file-size: 20MB   # 기본값 1MB — Lab1.4 PDF 업로드에서 413 나는 걸 막기 위해 올림
+      max-request-size: 20MB
   ai:
     ollama:
       base-url: http://localhost:11434
@@ -24,6 +22,13 @@ spring:
       chat:
         options:
           model: llama3.2:3b
+    vectorstore:
+      # PgVectorStoreAutoConfiguration은 이 값이 pgvector일 때만 켜진다(기본값이 켜짐이라 명시적으로 꺼야 함).
+      # Lab1.2를 뺀 나머지 데모는 DB가 필요 없으므로 기본은 꺼두고, 아래 lab12 문서에서만 켠다.
+      # 덕분에 Docker 없이도 lab11/lab13/lab14/api/m1-* 는 그대로 실행된다.
+      # (autoconfigure.exclude로 아예 꺼버리면 Lab1.2가 주입받을 VectorStore 빈까지 사라지므로
+      #  같은 목적을 이 스위치 하나로 처리한다. Lab1.3의 수동 builder 방식은 빈과 무관하게 그대로 동작.)
+      type: none
 
 # Lab1.3 실습 문서 경로 (Lab1.2는 agentic-rag-survey.pdf를 코드에 직접 고정해서 씀)
 rag:
@@ -34,3 +39,26 @@ rag:
 logging:
   level:
     org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: DEBUG
+
+---
+# ↓ 여기부터는 lab12 프로필로 실행할 때만 적용되는 설정 (같은 파일 안의 별도 문서)
+spring:
+  config:
+    activate:
+      on-profile: lab12
+  ai:
+    vectorstore:
+      type: pgvector
+      pgvector:
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 1024   # bge-m3 기준 — Lab1.1에서 확인한 embed(...).length 값과 반드시 일치
+        initialize-schema: true
+        # Day2 lab21이 쓰는 기본 테이블(vector_store)과 분리한다.
+        # 아래 remove-existing 옵션이 테이블을 통째로 지우기 때문에, 이름을 나누지 않으면
+        # Day1 Lab1.2를 돌릴 때마다 Day2에서 인덱싱해둔 데이터가 날아간다.
+        table-name: vector_store_day1_lab12
+        # Lab1.2는 파이프라인을 처음부터 끝까지 보여주는 데모라 매 실행이 깨끗해야 한다.
+        # 이게 없으면 두 번 실행할 때 같은 청크가 두 벌 쌓여 검색 결과에 중복이 뜬다.
+        # (재시작해도 데이터가 남는 '영속성' 자체를 보여주는 건 Day2 lab21 — 거기선 이 옵션을 켜지 않는다)
+        remove-existing-vector-store-table: true
