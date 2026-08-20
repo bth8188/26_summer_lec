@@ -1,4 +1,6 @@
 spring:
+  profiles:             
+    active: lab21
   application:
     name: rag-day2-demo
   datasource:
@@ -13,7 +15,7 @@ spring:
           model: bge-m3   # 실측 결과 nomic-embed-text는 한국어 의미 구분에 실패함 (아래 커리큘럼 문서 참고) — 반드시 bge-m3 사용
       chat:
         options:
-          model: llama3.2:3b
+          model: qwen2.5:7b
     vectorstore:
       pgvector:
         index-type: HNSW
