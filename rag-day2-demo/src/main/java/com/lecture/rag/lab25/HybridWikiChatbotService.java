@@ -1,7 +1,6 @@
 package com.lecture.rag.lab25;
 
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.TextReader;
@@ -14,8 +13,9 @@ import java.util.List;
 
 /**
  * Lab 2.5 — 하나의 챗봇에 두 검색 방식을 함께 장착:
- *  - kimchi-wiki: QuestionAnswerAdvisor (매 질문마다 무조건 검색해서 프롬프트에 주입)
+ *  - kimchi-wiki: HybridSearchAdvisor (매 질문마다 무조건 검색해서 프롬프트에 주입)
  *  - jeju-wiki:   @Tool (JejuSearchTool — 모델이 필요하다고 판단할 때만 호출)
+ * 두 경로 모두 검색은 HybridSearchService(Dense 벡터 유사도 + Sparse 전문 검색, RRF로 결합)를 쓴다.
  *
  * 콘솔 버전(HybridChatbotConsoleDemo)과 Swagger 버전(HybridChatbotApiController)이
  * 이 서비스 하나를 공유한다 — lab13→lab14 관계와 동일하게, 로직은 한 곳에만 있고
@@ -29,12 +29,15 @@ public class HybridWikiChatbotService {
 
     private final ChatModel chatModel;
     private final VectorStore vectorStore;
+    private final HybridSearchService hybridSearchService;
     private final JejuSearchTool jejuSearchTool;
 
-    public HybridWikiChatbotService(ChatModel chatModel, VectorStore vectorStore) {
+    public HybridWikiChatbotService(ChatModel chatModel, VectorStore vectorStore,
+                                     HybridSearchService hybridSearchService) {
         this.chatModel = chatModel;
         this.vectorStore = vectorStore;
-        this.jejuSearchTool = new JejuSearchTool(vectorStore);
+        this.hybridSearchService = hybridSearchService;
+        this.jejuSearchTool = new JejuSearchTool(hybridSearchService);
     }
 
     /** lab21처럼 이미 인덱싱돼 있으면(topic별로) 다시 인덱싱하지 않는다. */
@@ -90,12 +93,7 @@ public class HybridWikiChatbotService {
                 .defaultSystem("항상 한국어로 답변하세요. 컨텍스트나 도구 검색 결과에 관련 내용이 없으면 모른다고 답하세요.")
                 .build();
 
-        QuestionAnswerAdvisor kimchiAdvisor = QuestionAnswerAdvisor.builder(vectorStore)
-                .searchRequest(SearchRequest.builder()
-                        .topK(3)
-                        .filterExpression("topic == 'kimchi'")
-                        .build())
-                .build();
+        HybridSearchAdvisor kimchiAdvisor = new HybridSearchAdvisor(hybridSearchService, "kimchi", 3);
 
         return chatClient.prompt()
                 .advisors(kimchiAdvisor)
