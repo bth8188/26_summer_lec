@@ -24,6 +24,7 @@ docker compose up -d        # PGVector (Lab2.1부터 필요)
 ./run.sh query-transform       # M2.5 — QueryTransformer: 질문 재작성 단독 + Transform/Retrieve/Rerank 파이프라인 비교
 ./run.sh lab23                 # Lab2.4 — RAG를 도구로 쓰기(Agentic RAG) vs 프롬프트 바인딩형 비교
 ./run.sh lab24                 # 콘솔 RAG 챗봇 — Advisor(김치) + Tool(제주) 조합, 대화형
+./run.sh lab24-api             # 같은 챗봇의 Swagger 버전 (브라우저)
 ```
 
 ```bat
@@ -35,6 +36,7 @@ run.bat lab22
 run.bat query-transform
 run.bat lab23
 run.bat lab24
+run.bat lab24-api
 ```
 (원한다면 `mvnw spring-boot:run -Dspring-boot.run.profiles=<이름>`으로 직접 실행해도 동일하게 동작함 — `run.sh`/`run.bat`은 그 명령을 대신 기억해주는 것뿐. Windows에서는 `mvnw.cmd`)
 
@@ -62,9 +64,11 @@ com.lecture.rag
 ├── lab23/                                  — Lab2.4 Agentic RAG 참고 구현
 │   ├── DocumentSearchTool.java
 │   └── RagAsToolDemo.java                 (@Profile("lab23"))
-└── lab24/                                  — 앞의 랩들을 합친 콘솔 챗봇
+└── lab24/                                  — 앞의 랩들을 합친 챗봇 (콘솔 + Swagger)
+    ├── ChatbotService.java                 — 인덱싱/게이트/Advisor/Tool 등 알맹이 전부
     ├── JejuSearchTool.java                (제주 문서 전용 @Tool)
-    └── ConsoleChatbotDemo.java            (@Profile("lab24"))
+    ├── ConsoleChatbotDemo.java            (@Profile("lab24"), 콘솔 입출력만)
+    └── ChatbotApiController.java          (@Profile("lab24-api"), HTTP만)
 ```
 
 ## lab24 — 콘솔 챗봇 (Advisor + Tool 조합)
@@ -98,6 +102,32 @@ docker compose up -d
 | 제주도 면적이 얼마야? | 근거 `[jeju]`, 도구 호출됨 → 1,846km² |
 | 김치는 언제부터 먹었어? | 근거 `[kimchi]`, Advisor 컨텍스트로 답변 |
 | 아이폰 최신 모델이 뭐야? | 게이트 차단 → "제가 가진 자료로는 답변드릴 수 없습니다." |
+
+### Swagger 버전 (`lab24-api`)
+콘솔과 **완전히 같은 로직**이다. `ChatbotService`가 알맹이를 전부 들고 있고, `ConsoleChatbotDemo`는 `Scanner` 입출력만, `ChatbotApiController`는 HTTP만 붙인다. Day1에서 콘솔 데모와 Swagger 데모가 각자 인덱싱 코드를 복사해 들고 있던 것과 달리 여기서는 한 벌이다.
+
+```bash
+docker compose up -d
+./run.sh lab24-api
+```
+브라우저에서 `http://localhost:8080/swagger-ui/index.html` 접속.
+
+| 엔드포인트 | 설명 |
+|---|---|
+| `GET /api/chatbot/ask?question=...` | 질문하고 근거·도구 호출 여부까지 같이 받는다 |
+| `GET /api/chatbot/documents` | source 태그별 청크 수 (두 문서가 한 테이블에 있다는 증거) |
+
+응답에 판정 근거가 그대로 담겨서, 콘솔보다 오히려 동작을 보여주기 좋다. 실측(2026-08-20):
+
+```
+GET /api/chatbot/documents  →  {"kimchi":5,"jeju":2}
+
+"제주도 면적이 얼마야?"    → sources:["jeju"]    toolCalled:true   refused:false
+"김치는 언제부터 먹었어?"  → sources:["kimchi"]  toolCalled:true   refused:false
+"아이폰 최신 모델이 뭐야?" → sources:[]          toolCalled:false  refused:true
+```
+
+`ask()`는 도구 호출 횟수를 요청 전후로 비교해 `toolCalled`를 판정하기 때문에 `synchronized`다. 동시 요청이 들어오면 카운터가 섞이는데, 강의 데모용이라 이 정도로 막아뒀다.
 
 ### 알려진 한계
 `llama3.2:3b`는 김치 질문에도 `searchJeju` 도구를 같이 호출한다. 도구가 제주 필터로 빈손을 돌려주고 Advisor 컨텍스트로 답이 나오므로 결과는 맞지만, "모델이 도구를 정확히 골라 쓴다"는 이상적인 동작은 아니다. 소형 모델의 tool calling 한계로, lab23에서 다루는 주제와 이어진다.
