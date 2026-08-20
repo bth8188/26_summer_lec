@@ -6,15 +6,16 @@
 #        ./run.sh lab22                  (리랭크 데모, 콘솔)
 #        ./run.sh query-transform        (M2.5 QueryTransformer — 재작성 + Transform/Retrieve/Rerank 파이프라인, 콘솔)
 #        ./run.sh lab23                  (RAG를 도구로 쓰기 — Agentic RAG, 콘솔)
+#        ./run.sh lab24                  (콘솔 RAG 챗봇 — Advisor+Tool 조합, 대화형)
 set -euo pipefail
 cd "$(dirname "$0")"
 
 case "${1:-}" in
-  chunking-strategies|mmr|lab21|lab22|query-transform|lab23)
+  chunking-strategies|mmr|lab21|lab22|query-transform|lab23|lab24)
     ./mvnw spring-boot:run -Dspring-boot.run.profiles="$1"
     ;;
   *)
-    echo "사용법: ./run.sh <chunking-strategies|mmr|lab21|lab22|query-transform|lab23>"
+    echo "사용법: ./run.sh <chunking-strategies|mmr|lab21|lab22|query-transform|lab23|lab24>>"
     exit 1
     ;;
 esac
