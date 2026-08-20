@@ -43,7 +43,7 @@ spring:
 spring:
   config:
     activate:
-      on-profile: lab25
+      on-profile: lab25,lab25-api   # 콘솔 버전과 Swagger 버전이 같은 테이블을 쓴다 (쉼표 = OR)
   ai:
     vectorstore:
       pgvector:

@@ -26,6 +26,7 @@ docker compose up -d        # PGVector (Lab2.1부터 필요)
 ./run.sh lab24                 # 콘솔 RAG 챗봇 — Advisor(김치) + Tool(제주) 조합, 대화형
 ./run.sh lab24-api             # 같은 챗봇의 Swagger 버전 (브라우저)
 ./run.sh lab25                 # 사서 챗봇 — 관계 테이블(SQL) + 벡터, 도구 2종
+./run.sh lab25-api             # 같은 사서 챗봇의 Swagger 버전 (브라우저)
 ```
 
 ```bat
@@ -39,6 +40,7 @@ run.bat lab23
 run.bat lab24
 run.bat lab24-api
 run.bat lab25
+run.bat lab25-api
 ```
 (원한다면 `mvnw spring-boot:run -Dspring-boot.run.profiles=<이름>`으로 직접 실행해도 동일하게 동작함 — `run.sh`/`run.bat`은 그 명령을 대신 기억해주는 것뿐. Windows에서는 `mvnw.cmd`)
 
@@ -77,7 +79,8 @@ com.lecture.rag
     ├── ContentSearchTool.java              — 본문 @Tool (벡터, documentId로 범위 축소)
     ├── PlainTextResultConverter.java       — returnDirect 결과의 JSON 이스케이프 제거
     ├── LibrarianService.java               — 인덱싱 + 도구 2종을 붙인 ChatClient
-    └── LibrarianConsoleDemo.java           (@Profile("lab25"))
+    ├── LibrarianConsoleDemo.java           (@Profile("lab25"), 콘솔 입출력만)
+    └── LibrarianApiController.java         (@Profile("lab25-api"), HTTP만)
 ```
 
 ## lab24 — 콘솔 챗봇 (Advisor + Tool 조합)
@@ -186,6 +189,27 @@ select d.id, d.title, count(v.id) as vector_chunks
 from document d join vector_store_librarian v
   on (v.metadata->>'document_id')::int = d.id
 group by d.id, d.title order by d.id;"
+```
+
+### Swagger 버전 (`lab25-api`)
+`LibrarianService`를 콘솔과 그대로 공유한다(lab24와 같은 구성).
+
+```bash
+./run.sh lab25-api
+```
+
+| 엔드포인트 | 설명 |
+|---|---|
+| `GET /api/librarian/ask?question=...` | 질문. 응답의 `catalogCalls` / `contentCalls`로 어느 도구를 골랐는지 보인다 |
+| `GET /api/librarian/documents?category=wiki` | 카탈로그 조회 (LLM을 거치지 않는 순수 SQL) |
+| `GET /api/librarian/documents/{id}/chunks` | 조인 검증 |
+
+조인 검증 엔드포인트는 **카탈로그가 기록해둔 청크 수와 벡터 테이블에서 `document_id`로 실제 세어본 수를 비교**한다. 두 저장소가 같은 키로 이어져 있다는 걸 psql 없이 보여줄 수 있어 강의용으로 편하다.
+
+```json
+GET /api/librarian/documents/7/chunks
+{ "documentId": 7, "title": "김치 (위키백과)",
+  "catalogChunkCount": 5, "vectorChunkCount": 5, "joinConsistent": true }
 ```
 
 ### 알려진 한계

@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,11 +29,13 @@ import java.util.Map;
  *
  * 두 저장소는 document.id ↔ 벡터 metadata의 document_id로 이어진다.
  *
+ * 콘솔 버전은 LibrarianConsoleDemo, Swagger 버전은 LibrarianApiController가 이 서비스를 공유한다.
+ *
  * 실행: 1) docker compose up -d
- *       2) ./run.sh lab25     (최초 실행은 8개 문서 인덱싱에 몇 분 걸림)
+ *       2) ./run.sh lab25  또는  ./run.sh lab25-api   (최초 실행은 8개 문서 인덱싱에 몇 분 걸림)
  */
 @Service
-@Profile("lab25")
+@Profile({"lab25", "lab25-api"})
 public class LibrarianService {
 
     static final double SIMILARITY_THRESHOLD = 0.55;
@@ -142,9 +145,36 @@ public class LibrarianService {
         return new TextReader("classpath:/scenarios/" + fileName).get().get(0).getText();
     }
 
-    /** 진단용 — 벡터 테이블에 실제로 몇 청크가 들어갔는지. */
-    public int storedChunkCount() {
-        return vectorStore.similaritySearch(
-                SearchRequest.builder().query("문서").topK(10000).similarityThresholdAll().build()).size();
+    // ---- 조회 (콘솔에서는 안 쓰고 API에서만 쓴다) ----
+
+    /** 카탈로그 목록. category가 null이면 전체. */
+    public List<Map<String, Object>> listDocuments(String category) {
+        return catalog.list(category);
+    }
+
+    /**
+     * 카탈로그가 기록해둔 청크 수와, 벡터 테이블에서 document_id로 실제로 세어본 청크 수를 나란히 준다.
+     * 두 저장소가 정말 같은 키로 이어져 있는지 눈으로 확인하는 용도.
+     */
+    public Map<String, Object> chunkReport(int documentId) {
+        Map<String, Object> row = catalog.findById(documentId);
+        if (row == null) {
+            return Map.of("error", documentId + "번 문서가 카탈로그에 없습니다");
+        }
+        int actual = vectorStore.similaritySearch(
+                SearchRequest.builder()
+                        .query("문서")
+                        .topK(10000)
+                        .similarityThresholdAll()
+                        .filterExpression(ContentSearchTool.DOCUMENT_ID + " == " + documentId)
+                        .build()).size();
+
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("documentId", documentId);
+        report.put("title", row.get("title"));
+        report.put("catalogChunkCount", row.get("chunk_count"));
+        report.put("vectorChunkCount", actual);
+        report.put("joinConsistent", Integer.valueOf(actual).equals(row.get("chunk_count")));
+        return report;
     }
 }
