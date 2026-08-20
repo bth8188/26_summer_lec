@@ -10,3 +10,6 @@
 
 # OS 메타데이터 파일은 어디에 있든 제외
 .DS_Store
+
+# Claude Code 워크트리/로컬 작업 디렉터리
+.claude/

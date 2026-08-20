@@ -17,7 +17,7 @@ ollama pull llama3.2:3b     # LLM (8GB 노트북 기준. 16GB+면 qwen2.5:7b 등
 # macOS / Linux
 ./run.sh live-demo             # M1.1 라이브 데모 — Swagger UI(브라우저), 강의 라이브용 추천
 ./run.sh lab11                 # 임베딩 유사도 실습
-./run.sh lab12                 # 인덱싱 파이프라인 실습
+./run.sh lab12                 # 인덱싱 파이프라인 실습 (PGVector에 저장 — DB 컨테이너 필요, 아래 참고)
 ./run.sh lab13                 # RAG 챗봇 (콘솔 대화형, 빈 줄 입력으로 종료)
 ./run.sh hallucination-console # M1.1 할루시네이션 재현 (콘솔 버전, Swagger 대신 쓰고 싶을 때)
 ./run.sh compare-console       # M1.1 순수 LLM vs RAG 비교 (콘솔 버전)
@@ -51,6 +51,29 @@ http://localhost:8080/swagger-ui/index.html
 
 주의: `spring-boot-starter-web`이 추가되면서 **어떤 프로필로 실행하든 8080 포트에 Tomcat이 항상 뜬다** (컨트롤러 자체는 `api` 프로필에서만 등록되지만 서버는 항상 켜짐). 포트 충돌 시 `--server.port=8081` 등으로 바꿀 것.
 
+## Lab1.2는 PGVector에 저장한다 (실행 전 필독)
+Lab1.2만 인메모리(`SimpleVectorStore`)가 아니라 PostgreSQL + pgvector에 저장한다. 그래서 **실행 전에 DB 컨테이너가 떠 있어야 한다.** Day2 프로젝트의 것을 그대로 쓴다 — 별도 컨테이너를 띄우면 5432 포트가 충돌한다.
+
+```bash
+cd ../rag-day2-demo && docker compose up -d
+cd ../rag-day1-demo && ./run.sh lab12
+```
+
+코드에서 눈여겨볼 지점은 스토어를 **직접 만들지 않고 주입받는다**는 것 하나뿐이다. `VectorStore`가 인터페이스라서 `add()` / `similaritySearch()` 호출부는 인메모리 시절과 한 줄도 다르지 않고, 임베딩 모델을 코드에서 다루지 않는데도 검색이 되는 건 `PgVectorStore`가 내부에서 호출하기 때문이다. Day2 Lab2.1에서 "구현체만 갈아끼우면 된다"고 설명하는 지점이 바로 이것.
+
+```java
+private final VectorStore vectorStore;   // PgVectorStore가 자동 주입됨
+
+public IndexingPipelineDemo(VectorStore vectorStore) { ... }
+```
+
+설정에서 알아둘 세 가지:
+- 설정은 `application.yml` 한 파일에 다 있다. 위쪽 공통 문서에서 pgvector를 `type: none`으로 꺼두고, `---` 아래 `on-profile: lab12` 문서에서만 다시 켠다. 덕분에 **나머지 프로필(lab11/lab13/lab14/api 등)은 DB가 꺼져 있어도 그대로 뜬다**(실측 확인함).
+- 테이블을 `vector_store_day1_lab12`로 분리해서, Day2 `lab21`이 쓰는 기본 `vector_store`와 같은 DB를 공유해도 데이터가 섞이지 않는다.
+- `remove-existing-vector-store-table: true`라 매 실행마다 테이블을 새로 만든다. 파이프라인을 처음부터 끝까지 보여주는 데모라 중복 누적을 막은 것 — 재시작해도 데이터가 남는 "영속성" 자체를 보여주는 건 Day2 `lab21` 쪽이다.
+
+실측(2026-08-20, `manual.pdf` 기준): 1페이지 → 3청크가 인덱싱되고, 두 번 실행해도 테이블 건수는 3으로 유지된다.
+
 ## 실습 문서
 `src/main/resources/docs/manual.txt` / `manual.pdf` — 가상의 커피메이커(MCM-200) 제품 매뉴얼. 조항 번호(제N조)와 오류 코드(E1/E2/E3), 고객센터 번호 등 고유명사가 있어 Day2 하이브리드 검색 실습에도 그대로 재사용 가능.
 
@@ -75,7 +98,7 @@ http://localhost:8080/swagger-ui/index.html
 ```
 com.lecture.rag
 ├── lab11/EmbeddingSimilarityDemo.java   (@Profile("lab11"))
-├── lab12/IndexingPipelineDemo.java      (@Profile("lab12"))
+├── lab12/IndexingPipelineDemo.java      (@Profile("lab12")) — PGVector에 인덱싱
 ├── lab13/RagChatbotDemo.java            (@Profile("lab13"))
 ├── m1demo/
 │   ├── HallucinationLiveDemo.java       (@Profile("m1-hallucination"), 콘솔)

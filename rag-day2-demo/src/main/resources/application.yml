@@ -25,3 +25,15 @@ spring:
 logging:
   level:
     org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: DEBUG
+
+---
+# ↓ lab24(콘솔 챗봇)로 실행할 때만 적용. 제주/김치 문서를 lab21의 vector_store와 섞지 않기 위해
+#   전용 테이블을 쓴다. 섞이면 lab21의 "이미 인덱싱됨" 판정과 서로 꼬인다.
+spring:
+  config:
+    activate:
+      on-profile: lab24,lab24-api   # 콘솔 버전과 Swagger 버전이 같은 테이블을 쓴다 (쉼표 = OR)
+  ai:
+    vectorstore:
+      pgvector:
+        table-name: vector_store_chatbot

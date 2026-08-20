@@ -2,6 +2,7 @@ package com.lecture.rag.lab21m1;
 
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.reader.TextReader;
 import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.boot.CommandLineRunner;
@@ -11,7 +12,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * M2.1 — 청킹 전략 4종을 실제 시나리오 문서로 비교.
+ * M2.1 — 청킹 전략 5종을 실제 시나리오 문서로 비교.
  * 실행: ./mvnw spring-boot:run -Dspring-boot.run.profiles=chunking-strategies
  */
 @Component
@@ -34,11 +35,15 @@ public class ChunkingStrategyDemo implements CommandLineRunner {
         structureBased();
 
         System.out.println();
-        System.out.println("################ 3. Sliding Window (겹치는 청크) ################");
+        System.out.println("################ 3. 마크다운 구조 청킹 (헤더 계층 유지) ################");
+        markdownStructured();
+
+        System.out.println();
+        System.out.println("################ 4. Sliding Window (겹치는 청크) ################");
         slidingWindow();
 
         System.out.println();
-        System.out.println("################ 4. Semantic Chunking (문장 간 유사도 급락 지점) ################");
+        System.out.println("################ 5. Semantic Chunking (문장 간 유사도 급락 지점) ################");
         semanticChunking();
     }
 
@@ -50,6 +55,13 @@ public class ChunkingStrategyDemo implements CommandLineRunner {
         // (예: "물탱크    용량은") 청킹 전에 공백을 정규화하지 않으면 실제 글자 수보다 훨씬 길게 잡힘
         combined = combined.replaceAll("[ \\t]+", " ");
         return new Document(combined);
+    }
+
+    // 마크다운은 들여쓰기와 줄바꿈이 곧 구조(중첩 리스트, 코드블록)라서
+    // loadFullText()가 하는 공백 정규화를 적용하면 안 된다 — 원문 그대로 읽는다
+    private Document loadMarkdown(String file) {
+        TextReader reader = new TextReader("classpath:/scenarios/" + file);
+        return new Document(reader.get().get(0).getText());
     }
 
     private void compareFixedVsRecursive() {
@@ -77,6 +89,25 @@ public class ChunkingStrategyDemo implements CommandLineRunner {
         System.out.println("청크 수: " + chunks.size() + " (실제 조항 수와 비교해볼 것)");
         for (int i = 0; i < Math.min(4, chunks.size()); i++) {
             System.out.println("  [" + i + "] " + preview(chunks.get(i).getText(), 100));
+        }
+    }
+
+    private void markdownStructured() {
+        Document doc = loadMarkdown("8-opensource-spring-ai-readme.md");
+
+        StructureBasedSplitter flat = StructureBasedSplitter.forMarkdownHeaders();
+        List<Document> flatChunks = flat.split(doc);
+        System.out.println("[평평한 구조 청킹] 청크 수: " + flatChunks.size());
+        for (Document chunk : flatChunks) {
+            System.out.println("  " + chunk.getText().length() + "자 | " + preview(chunk.getText(), 70));
+        }
+
+        MarkdownSectionSplitter hierarchical = new MarkdownSectionSplitter(600);
+        List<Document> chunks = hierarchical.split(doc);
+        System.out.println("[헤더 계층 유지] 청크 수: " + chunks.size() + " (600자 넘는 섹션은 한 번 더 쪼개짐)");
+        for (Document chunk : chunks) {
+            System.out.println("  <" + chunk.getMetadata().get(MarkdownSectionSplitter.SECTION_METADATA) + "> "
+                    + chunk.getText().length() + "자 | " + preview(chunk.getText(), 70));
         }
     }
 
