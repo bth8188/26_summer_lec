@@ -22,7 +22,7 @@ import com.lecture.rag.day3.pipeline.PipelineRegistry;
  * 상태 확인 / 파이프라인 목록 / 답변 채점.
  *
  * <pre>
- * GET  /api/health      백엔드·Ollama·모델·지식베이스 상태 (프론트 상단 상태 표시등)
+ * GET  /api/health      백엔드·OpenAI·모델·지식베이스 상태 (프론트 상단 상태 표시등)
  * GET  /api/pipelines   선택 가능한 파이프라인 목록 (프론트 드롭다운)
  * POST /api/evaluate    LLM-as-judge 채점 (골드 티어, 답변 카드의 "채점" 버튼)
  * </pre>
@@ -37,44 +37,48 @@ public class MetaController {
 
     private final String chatModel;
     private final String embeddingModel;
-    private final String ollamaBaseUrl;
+    private final String apiKey;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(2))
+            .connectTimeout(Duration.ofSeconds(3))
             .build();
 
     public MetaController(KnowledgeBase knowledgeBase, PipelineRegistry registry, JudgeService judgeService,
-            @Value("${spring.ai.ollama.chat.options.model:unknown}") String chatModel,
-            @Value("${spring.ai.ollama.embedding.options.model:unknown}") String embeddingModel,
-            @Value("${spring.ai.ollama.base-url:http://localhost:11434}") String ollamaBaseUrl) {
+            @Value("${spring.ai.openai.chat.options.model:unknown}") String chatModel,
+            @Value("${spring.ai.openai.embedding.options.model:unknown}") String embeddingModel,
+            @Value("${spring.ai.openai.api-key:}") String apiKey) {
         this.knowledgeBase = knowledgeBase;
         this.registry = registry;
         this.judgeService = judgeService;
         this.chatModel = chatModel;
         this.embeddingModel = embeddingModel;
-        this.ollamaBaseUrl = ollamaBaseUrl;
+        this.apiKey = apiKey;
     }
 
     /**
-     * @param ollamaUp        Ollama 서버 응답 여부
-     * @param chatModelReady  설정된 채팅 모델이 실제로 pull 되어 있는지
-     * @param embeddingReady  설정된 임베딩 모델이 실제로 pull 되어 있는지
+     * @param apiUp           OpenAI API 응답 여부 (키가 비어 있거나 요청이 실패하면 false)
+     * @param chatModelReady  설정된 채팅 모델이 이 계정에서 실제로 조회되는지
+     * @param embeddingReady  설정된 임베딩 모델이 이 계정에서 실제로 조회되는지
      */
-    public record Health(String status, String chatModel, String embeddingModel, boolean ollamaUp,
+    public record Health(String status, String chatModel, String embeddingModel, boolean apiUp,
             boolean chatModelReady, boolean embeddingReady, int documents, int chunks) {
     }
 
     @GetMapping("/health")
     public Health health() {
-        String tags = fetchOllamaTags();
-        boolean up = tags != null;
+        if (this.apiKey == null || this.apiKey.isBlank()) {
+            return new Health("openai-key-missing", this.chatModel, this.embeddingModel,
+                    false, false, false, this.knowledgeBase.documents().size(), this.knowledgeBase.totalChunks());
+        }
+        String models = fetchOpenAiModels();
+        boolean up = models != null;
         return new Health(
-                up ? "ok" : "ollama-down",
+                up ? "ok" : "openai-down",
                 this.chatModel,
                 this.embeddingModel,
                 up,
-                up && containsModel(tags, this.chatModel),
-                up && containsModel(tags, this.embeddingModel),
+                up && containsModel(models, this.chatModel),
+                up && containsModel(models, this.embeddingModel),
                 this.knowledgeBase.documents().size(),
                 this.knowledgeBase.totalChunks());
     }
@@ -89,11 +93,12 @@ public class MetaController {
         return this.judgeService.judge(request);
     }
 
-    /** Ollama가 살아있는지 + 어떤 모델이 있는지 확인. 실패하면 null. */
-    private String fetchOllamaTags() {
+    /** OpenAI API가 이 키로 응답하는지 + 계정에서 어떤 모델이 보이는지 확인. 실패하면 null. */
+    private String fetchOpenAiModels() {
         try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(this.ollamaBaseUrl + "/api/tags"))
-                    .timeout(Duration.ofSeconds(2))
+            HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.openai.com/v1/models"))
+                    .timeout(Duration.ofSeconds(3))
+                    .header("Authorization", "Bearer " + this.apiKey)
                     .GET()
                     .build();
             HttpResponse<String> response = this.httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -104,12 +109,11 @@ public class MetaController {
         }
     }
 
-    /** "llama3.2:3b" 처럼 태그까지 적힌 이름과 "bge-m3"처럼 태그를 생략한 이름 모두 처리. */
-    private static boolean containsModel(String tags, String model) {
+    /** /v1/models 응답 JSON에 "id":"모델명" 이 들어있는지만 간단히 확인 (전체 파싱 불필요). */
+    private static boolean containsModel(String modelsJson, String model) {
         if (model == null || model.isBlank()) {
             return false;
         }
-        String bare = model.contains(":") ? model.substring(0, model.indexOf(':')) : model;
-        return tags.contains("\"" + model + "\"") || tags.contains("\"" + bare + ":");
+        return modelsJson.contains("\"" + model + "\"");
     }
 }

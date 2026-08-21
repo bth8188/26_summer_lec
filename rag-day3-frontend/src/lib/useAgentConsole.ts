@@ -4,7 +4,7 @@
  * 콘솔 전체의 상태를 한 곳에 모아둔 훅. 화면 컴포넌트들은 여기서 나온 값만 그린다.
  *
  * 들어 있는 것: 대화 세션 / 스트리밍 실행(Run) / 지식 베이스 / 파이프라인 목록 /
- * 백엔드·Ollama 상태 / 설정(검색 옵션·기능 토글) / 테마.
+ * 백엔드·OpenAI 상태 / 설정(검색 옵션·기능 토글) / 테마.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

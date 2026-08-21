@@ -6,19 +6,20 @@ spring:
     username: postgres
     password: postgres
   ai:
-    ollama:
-      base-url: http://localhost:11434
+    openai:
+      api-key: ${OPENAI_API_KEY}
       embedding:
         options:
-          model: bge-m3   # 실측 결과 nomic-embed-text는 한국어 의미 구분에 실패함 (아래 커리큘럼 문서 참고) — 반드시 bge-m3 사용
+          model: text-embedding-3-small
+          dimensions: 1024   # text-embedding-3-small은 dimensions 축소 옵션 지원 — 아래 vectorstore.dimensions와 반드시 일치
       chat:
         options:
-          model: llama3.2:3b
+          model: gpt-4o-mini
     vectorstore:
       pgvector:
         index-type: HNSW
         distance-type: COSINE_DISTANCE
-        dimensions: 1024   # bge-m3 기준 — Lab1.1에서 확인한 embed(...).length 값과 반드시 일치
+        dimensions: 1024   # 위 embedding.options.dimensions와 반드시 일치
         initialize-schema: true
 
 # QuestionAnswerAdvisor가 LLM에 최종적으로 넘기는 프롬프트(system+user 메시지 전체)를 콘솔에 출력
