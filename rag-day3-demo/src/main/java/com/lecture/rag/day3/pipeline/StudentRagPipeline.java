@@ -7,6 +7,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Component;
 
@@ -110,7 +111,9 @@ public class StudentRagPipeline extends AbstractRagPipeline {
                 서로 표현이 다른 3개를 줄바꿈으로만 구분해서 출력하고, 번호나 설명은 붙이지 마세요.
                 """.formatted(historyText.isBlank() ? "(없음)" : historyText, question);
 
-        String response = chatClient().prompt().user(prompt).call().content();
+        String response = chatClient().prompt()
+                .options(ChatOptions.builder().maxTokens(200))
+                .user(prompt).call().content();
         if (response == null || response.isBlank()) {
             return Optional.empty();
         }
@@ -254,7 +257,9 @@ public class StudentRagPipeline extends AbstractRagPipeline {
                 문서: %s
                 이 문서가 질문에 답하는 데 얼마나 관련 있는지 0~10 사이 숫자 하나만 답하세요. 설명은 하지 마세요.
                 """.formatted(query, candidate.getText());
-        String response = chatClient().prompt().user(prompt).call().content();
+        String response = chatClient().prompt()
+                .options(ChatOptions.builder().maxTokens(10))
+                .user(prompt).call().content();
         if (response == null) {
             return 0;
         }
@@ -302,7 +307,9 @@ public class StudentRagPipeline extends AbstractRagPipeline {
                 형식: '통과' 또는 '주의: <근거에 없는 내용 요약>' 한 줄로만.
                 """.formatted(context, answer);
 
-        String response = chatClient().prompt().user(prompt).call().content();
+        String response = chatClient().prompt()
+                .options(ChatOptions.builder().maxTokens(120))
+                .user(prompt).call().content();
         if (response == null || response.isBlank()) {
             return Optional.empty();
         }
