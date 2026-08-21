@@ -10,4 +10,11 @@ public class RagDay2DemoApplication {
 		SpringApplication.run(RagDay2DemoApplication.class, args);
 	}
 
+	// Day2 과제
+	// cli 인풋 받고
+	// pgvector에서 유사도를 검색해서
+	// 결과 없으면 모른다고 대답할 수 있는 챗봇 만들기
+	// RAG는 qaAdvisor 하나와 tool 하나 넣기
+	// jeju-wiki는 도구로 제공
+	// kimchi-wiki는 advisor로 제공
 }
