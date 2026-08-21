@@ -47,6 +47,7 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     private static final Pattern ARTICLE_REFERENCE =
             Pattern.compile("제\\s*\\d+조(?:의\\s*\\d+)?(?:\\s*제\\s*\\d+항)?");
     private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}]+");
+    private static final Pattern FIRST_SCORE = Pattern.compile("(?<!\\d)(10|[0-9])(?!\\d)");
 
     private static final Set<String> STOP_WORDS = Set.of(
             "무엇", "무엇인가요", "어떻게", "알려주세요", "설명해주세요", "정한", "따른",
@@ -238,8 +239,22 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      */
     @Override
     protected Optional<List<Document>> rerank(String query, List<Document> candidates, RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        int candidateLimit = Math.max(options.topKOrDefault() * 2, 8);
+        List<Document> shortlist = candidates.stream().limit(candidateLimit).toList();
+        List<ScoredDocument> scored = new ArrayList<>(shortlist.size());
+
+        for (int i = 0; i < shortlist.size(); i++) {
+            Document document = shortlist.get(i);
+            scored.add(new ScoredDocument(document, scoreForRerank(query, document), i));
+        }
+
+        List<Document> reranked = scored.stream()
+                .sorted(Comparator.comparingInt(ScoredDocument::score).reversed()
+                        .thenComparingInt(ScoredDocument::originalIndex))
+                .limit(options.topKOrDefault())
+                .map(ScoredDocument::document)
+                .toList();
+        return Optional.of(reranked);
     }
 
     // =================================================================== 골드
@@ -269,6 +284,35 @@ public class StudentRagPipeline extends AbstractRagPipeline {
             RagOptions options) {
         // TODO(골드): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
         return Optional.empty();
+    }
+
+    private int scoreForRerank(String query, Document document) {
+        String fileName = metadataText(document, "fileName");
+        String prompt = """
+                질문: %s
+                문서 출처: %s
+                문서 내용: %s
+
+                이 문서가 질문에 직접 답하는 데 얼마나 유용한지 0~10의 정수 하나만 답하세요.
+                정확한 조문 번호, 날짜, 수치가 일치하면 높은 점수를 주세요.
+                법령 문서에서는 현행 법률·시행령을 최종 시행 안내보다 우선하고,
+                입법예고는 질문이 입법예고 자체를 묻는 경우가 아니면 낮게 평가하세요.
+                설명은 출력하지 마세요.
+                """.formatted(query, fileName, RagPrompts.squeeze(document.getText()));
+
+        String response = chatClient().prompt()
+                .options(ChatOptions.builder().temperature(0.0))
+                .user(prompt)
+                .call()
+                .content();
+        Matcher matcher = FIRST_SCORE.matcher(response == null ? "" : response);
+        int llmScore = matcher.find() ? Integer.parseInt(matcher.group(1)) : 0;
+        int lexicalScore = keywordScore(document, query, extractArticleReferences(query), extractKeywords(query));
+        String normalizedQuery = normalize(query);
+        boolean asksDraft = normalizedQuery.contains("입법예고") || normalizedQuery.contains("예고안")
+                || normalizedQuery.contains("개정이유") || normalizedQuery.contains("개정문");
+        int authorityScore = asksDraft ? 0 : authorityBoost(normalize(fileName)) * 20;
+        return llmScore * 100 + Math.min(lexicalScore, 2_000) + authorityScore;
     }
 
     private static int keywordScore(Document document, String query, List<String> articleReferences,
