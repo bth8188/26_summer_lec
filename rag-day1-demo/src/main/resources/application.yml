@@ -5,6 +5,16 @@ spring:
     multipart:
       max-file-size: 20MB   # 기본값 1MB — Lab1.4 PDF 업로드에서 413 나는 걸 막기 위해 올림
       max-request-size: 20MB
+  # Lab1.3의 buildPgVectorStore()에서 JdbcTemplate 주입용으로만 씀 (PGVector가 실제로 안 떠 있어도 앱은 정상 기동됨 — Hikari는 지연 연결)
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ragdb
+    username: postgres
+    password: postgres
+  # PgVectorStoreAutoConfiguration을 꺼서, VectorStore 빈이 앱 기동 시 자동으로 만들어지지 않게 한다.
+  # (꺼두지 않으면 PGVector가 안 떠 있을 때 Day1의 모든 프로필이 기동 시점에 죽어버림 — Lab1.3에서는 PgVectorStore.builder(...)로 직접 만들어서 쓸 것이므로 자동 생성은 불필요)
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
   ai:
     ollama:
       base-url: http://localhost:11434
