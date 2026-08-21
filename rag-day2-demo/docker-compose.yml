@@ -1,5 +1,5 @@
 services:
-  pgvector:
+  pgvector-1:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ragdb
