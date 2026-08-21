@@ -31,3 +31,13 @@ build/
 
 ### VS Code ###
 .vscode/
+
+
+# Node / Next.js
+**/node_modules/
+**/.next/
+**/out/
+
+# Local environment
+**/.env.local
+**/.env.*.local
