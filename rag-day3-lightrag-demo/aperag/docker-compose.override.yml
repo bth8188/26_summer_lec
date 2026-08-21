@@ -1,0 +1,23 @@
+# Day2 PGVector 데모(호스트 5432)와 충돌하지 않게 호스트 포트만 옮긴다.
+# ports는 기본적으로 병합(append)되므로 !override 로 목록 자체를 교체해야 한다.
+services:
+  postgres:
+    ports: !override
+      - "5433:5432"
+  es:
+    # 이 환경(Docker Desktop on Apple Silicon)은 SVE(ARM 벡터 확장) 길이 조회에 실패하고,
+    # Elastic 번들 JDK는 그 상황에서 SIGILL 로 죽는다(exit 134). Temurin JDK는 SVE를
+    # 자동 비활성화해서 살아남는데, Elastic 번들 JDK는 그러지 않는다.
+    # → -XX:UseSVE=0 을 주면 정상 기동한다. 이 플래그는 JDK 21+ 에만 있으므로
+    #   번들 JDK가 20인 8.8.2 대신 8.17.0(JDK 23)을 쓴다.
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    environment:
+      - "discovery.type=single-node"
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g -XX:UseSVE=0"
+      - "xpack.security.enabled=false"
+      # elasticsearch-plugin(IK 설치)은 별도 CLI JVM 이라 CLI_JAVA_OPTS 를 따로 줘야 한다
+      - "CLI_JAVA_OPTS=-XX:UseSVE=0"
+  frontend:
+    # Day3 캡스톤 프론트엔드(Next.js)가 3000을 쓰고 있어 3001로 옮긴다
+    ports: !override
+      - "3001:3000"
