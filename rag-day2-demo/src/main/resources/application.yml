@@ -37,3 +37,14 @@ spring:
     vectorstore:
       pgvector:
         table-name: vector_store_chatbot
+
+---
+# ↓ lab25(사서 챗봇)로 실행할 때만 적용. 관계 테이블 document와 짝을 이루는 전용 벡터 테이블.
+spring:
+  config:
+    activate:
+      on-profile: lab25,lab25-api   # 콘솔 버전과 Swagger 버전이 같은 테이블을 쓴다 (쉼표 = OR)
+  ai:
+    vectorstore:
+      pgvector:
+        table-name: vector_store_librarian

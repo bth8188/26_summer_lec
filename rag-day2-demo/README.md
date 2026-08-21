@@ -25,6 +25,8 @@ docker compose up -d        # PGVector (Lab2.1부터 필요)
 ./run.sh lab23                 # Lab2.4 — RAG를 도구로 쓰기(Agentic RAG) vs 프롬프트 바인딩형 비교
 ./run.sh lab24                 # 콘솔 RAG 챗봇 — Advisor(김치) + Tool(제주) 조합, 대화형
 ./run.sh lab24-api             # 같은 챗봇의 Swagger 버전 (브라우저)
+./run.sh lab25                 # 사서 챗봇 — 관계 테이블(SQL) + 벡터, 도구 2종
+./run.sh lab25-api             # 같은 사서 챗봇의 Swagger 버전 (브라우저)
 ```
 
 ```bat
@@ -37,6 +39,8 @@ run.bat query-transform
 run.bat lab23
 run.bat lab24
 run.bat lab24-api
+run.bat lab25
+run.bat lab25-api
 ```
 (원한다면 `mvnw spring-boot:run -Dspring-boot.run.profiles=<이름>`으로 직접 실행해도 동일하게 동작함 — `run.sh`/`run.bat`은 그 명령을 대신 기억해주는 것뿐. Windows에서는 `mvnw.cmd`)
 
@@ -64,11 +68,19 @@ com.lecture.rag
 ├── lab23/                                  — Lab2.4 Agentic RAG 참고 구현
 │   ├── DocumentSearchTool.java
 │   └── RagAsToolDemo.java                 (@Profile("lab23"))
-└── lab24/                                  — 앞의 랩들을 합친 챗봇 (콘솔 + Swagger)
+├── lab24/                                  — 앞의 랩들을 합친 챗봇 (콘솔 + Swagger)
     ├── ChatbotService.java                 — 인덱싱/게이트/Advisor/Tool 등 알맹이 전부
     ├── JejuSearchTool.java                (제주 문서 전용 @Tool)
     ├── ConsoleChatbotDemo.java            (@Profile("lab24"), 콘솔 입출력만)
-    └── ChatbotApiController.java          (@Profile("lab24-api"), HTTP만)
+│   └── ChatbotApiController.java          (@Profile("lab24-api"), HTTP만)
+└── lab25/                                  — 관계 테이블 + 벡터 하이브리드 "사서" 챗봇
+    ├── DocumentCatalog.java                — document 테이블 DDL/조회 (JdbcTemplate)
+    ├── CatalogSearchTool.java              — 목록·집계·문서찾기 @Tool (SQL)
+    ├── ContentSearchTool.java              — 본문 @Tool (벡터, documentId로 범위 축소)
+    ├── PlainTextResultConverter.java       — returnDirect 결과의 JSON 이스케이프 제거
+    ├── LibrarianService.java               — 인덱싱 + 도구 2종을 붙인 ChatClient
+    ├── LibrarianConsoleDemo.java           (@Profile("lab25"), 콘솔 입출력만)
+    └── LibrarianApiController.java         (@Profile("lab25-api"), HTTP만)
 ```
 
 ## lab24 — 콘솔 챗봇 (Advisor + Tool 조합)
@@ -132,6 +144,78 @@ GET /api/chatbot/documents  →  {"kimchi":5,"jeju":2}
 ### 알려진 한계
 `llama3.2:3b`는 김치 질문에도 `searchJeju` 도구를 같이 호출한다. 도구가 제주 필터로 빈손을 돌려주고 Advisor 컨텍스트로 답이 나오므로 결과는 맞지만, "모델이 도구를 정확히 골라 쓴다"는 이상적인 동작은 아니다. 소형 모델의 tool calling 한계로, lab23에서 다루는 주제와 이어진다.
 
+
+## lab25 — 관계 테이블 + 벡터 하이브리드 (사서 챗봇)
+
+lab24까지는 저장소가 벡터 하나뿐이라 **문서 안의 내용**만 답할 수 있었다. 하지만 자료실에 하는 질문에는 다른 종류가 섞여 있다.
+
+> "어떤 자료들 갖고 있어?" / "위키 문서 몇 개야?" / "연구 논문만 보여줘"
+
+개수 세기, 목록 나열, 카테고리 필터링은 **임베딩이 원리적으로 할 수 없는 일**이다. 그래서 서지정보를 담는 관계 테이블을 따로 두고 그쪽은 SQL로 조회한다. 질문 성격에 따라 어느 저장소를 쓸지는 도구 2종을 등록해 모델이 고르게 한다.
+
+```
+document                                vector_store_librarian
+  id ─────────────────────────────────→  metadata->>'document_id'
+  file_name  title  category
+  doc_type   char_count  chunk_count
+```
+
+`document.id`가 조인 키다. 본문 검색 결과에서 이 값을 되짚어 "[출처: 제주도 (위키백과)]"를 붙이고, 반대로 `findDocument`로 얻은 id를 `searchContent(query, documentId)`에 넘기면 그 문서 안에서만 찾는다.
+
+### SQL 도구는 파라미터 조회 방식
+`listDocuments(category)`처럼 **모델은 인자만 넘기고 SQL은 서버가 짜둔 것을 쓴다.** 인젝션 여지가 없고 소형 모델도 쓸 수 있다. 모델이 SQL문을 직접 생성하는 Text-to-SQL이 더 에이전트답지만 `llama3.2:3b`로는 거의 실패하므로, 개념만 이 자리에서 설명하고 구현은 안전한 쪽을 택했다.
+
+### 목록형 답변에는 returnDirect
+`llama3.2:3b`는 8건짜리 목록을 도구로 받아도 답변에 옮겨 적지 못하고 "다음과 같습니다"로 끝내버린다(실측). 목록·집계처럼 **정답이 이미 확정된 결과는 모델을 거칠수록 손해**라, 카탈로그 도구에 `returnDirect = true`를 걸어 결과를 사용자에게 곧장 보낸다.
+
+기본 변환기는 반환값을 JSON 직렬화해서 `"총 8건\n- 1번 ..."`처럼 따옴표와 `\n`이 노출되므로, 원문을 유지하는 `PlainTextResultConverter`를 같이 지정해야 한다.
+
+### 실행
+```bash
+docker compose up -d
+./run.sh lab25
+```
+**최초 실행은 시나리오 8건(약 876청크, PDF 논문 2편 포함)을 인덱싱하느라 몇 분 걸린다.** 카탈로그가 채워져 있으면 이후 실행은 건너뛴다.
+
+### 실측 (2026-08-20)
+```
+어떤 자료들 갖고 있어?  → listDocuments 호출, 8건 목록 그대로 출력
+제주도 면적이 얼마야?   → searchContent 호출, "면적은 1,846 km²이다"
+```
+인덱싱 결과 — 조인이 맞는지는 아래 쿼리로 확인할 수 있다.
+```bash
+docker exec -it rag-day2-demo-pgvector-1 psql -U postgres -d ragdb -c "
+select d.id, d.title, count(v.id) as vector_chunks
+from document d join vector_store_librarian v
+  on (v.metadata->>'document_id')::int = d.id
+group by d.id, d.title order by d.id;"
+```
+
+### Swagger 버전 (`lab25-api`)
+`LibrarianService`를 콘솔과 그대로 공유한다(lab24와 같은 구성).
+
+```bash
+./run.sh lab25-api
+```
+
+| 엔드포인트 | 설명 |
+|---|---|
+| `GET /api/librarian/ask?question=...` | 질문. 응답의 `catalogCalls` / `contentCalls`로 어느 도구를 골랐는지 보인다 |
+| `GET /api/librarian/documents?category=wiki` | 카탈로그 조회 (LLM을 거치지 않는 순수 SQL) |
+| `GET /api/librarian/documents/{id}/chunks` | 조인 검증 |
+
+조인 검증 엔드포인트는 **카탈로그가 기록해둔 청크 수와 벡터 테이블에서 `document_id`로 실제 세어본 수를 비교**한다. 두 저장소가 같은 키로 이어져 있다는 걸 psql 없이 보여줄 수 있어 강의용으로 편하다.
+
+```json
+GET /api/librarian/documents/7/chunks
+{ "documentId": 7, "title": "김치 (위키백과)",
+  "catalogChunkCount": 5, "vectorChunkCount": 5, "joinConsistent": true }
+```
+
+### 알려진 한계
+`llama3.2:3b`는 **카탈로그냐 본문이냐는 잘 구분하지만, 카탈로그 안에서 어떤 메서드를 쓸지는 자주 틀린다.** "어떤 종류의 자료가 있어?"(→`countByCategory` 기대)나 "김치 문서 번호가 몇 번이야?"(→`findDocument` 기대)에 모두 `listDocuments`를 불렀다. 결과에 답이 포함돼 있어 답변 자체는 틀리지 않지만 의도한 경로는 아니다. 도구가 늘수록 이 경향이 심해지므로, 이 랩은 `qwen2.5:7b` 이상을 권한다.
+
+`findDocument` → `searchContent(documentId)`로 이어지는 2단계 연쇄도 3B 모델은 잘 하지 못한다.
 
 ## 실습 문서
 - `src/main/resources/docs/` — Day1부터 이어지는 강사 시연용 매뉴얼(`manual.pdf`)과 arXiv 논문(`agentic-rag-survey.pdf`), `lab21`/`lab22` 데모가 사용
