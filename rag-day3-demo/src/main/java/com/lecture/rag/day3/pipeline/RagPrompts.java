@@ -1,7 +1,10 @@
 package com.lecture.rag.day3.pipeline;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -115,19 +118,46 @@ public final class RagPrompts {
         return sources;
     }
 
-    /** 여러 쿼리로 검색한 결과를 청크 ID 기준으로 중복 제거하며 합친다(순서 유지). */
-    public static List<Document> mergeDistinct(List<List<Document>> results) {
-        List<Document> merged = new ArrayList<>();
-        List<String> seen = new ArrayList<>();
+    /**
+     * RRF 상수. 클수록 순위 차이를 덜 벌린다(1위와 5위의 점수 차가 작아진다).
+     * 60은 원 논문(Cormack et al., 2009)이 제안한 값으로, 하이브리드 검색의 사실상 기본값이다.
+     */
+    private static final int RRF_K = 60;
+
+    /**
+     * 여러 검색 결과를 <b>RRF(Reciprocal Rank Fusion)</b>로 합친다. 중복은 제거된다.
+     *
+     * <p>단순히 이어붙이면(concat) 앞 목록이 topK 자리를 전부 차지해서, 뒤 목록이 찾아온 청크는
+     * {@code finalizeSources}의 절단에 전부 잘려나간다 — 키워드 검색과 질문 재작성이
+     * "몇 개 추가됨"이라고 표시만 되고 실제로는 답변에 아무 영향을 못 주는 원인이었다.
+     *
+     * <p>RRF는 <b>점수가 아니라 순위</b>로 합친다. 청크 하나의 점수는
+     * {@code Σ 1/(K + 순위)}이고, 목록마다 순위는 1부터 센다.
+     * 코사인 유사도(0~1)와 키워드 TF-IDF 점수(범위 없음)처럼 <b>척도가 다른 점수를 정규화 없이
+     * 섞을 수 있다</b>는 게 핵심이다 — 순위는 어느 검색 방식에서나 같은 의미이기 때문이다.
+     *
+     * <p>부수 효과가 하나 더 있다. 여러 목록에 <b>동시에 등장한 청크가 자동으로 위로 올라온다</b>.
+     * 벡터도 찾고 키워드도 찾은 청크는 1/(60+1)을 두 번 받아 어느 한쪽 1위보다 높아진다.
+     * "두 방식이 모두 지목한 근거"가 가장 믿을 만하다는 직관이 그대로 수식이 된 것이다.
+     *
+     * @param results 합칠 검색 결과들. 각 목록은 이미 관련도 순으로 정렬되어 있어야 한다
+     * @return 융합 점수 내림차순. 동점이면 먼저 들어온 목록의 것이 앞에 온다
+     */
+    public static List<Document> fuseByRank(List<List<Document>> results) {
+        Map<String, Double> scores = new LinkedHashMap<>();
+        Map<String, Document> documents = new LinkedHashMap<>();
         for (List<Document> result : results) {
-            for (Document document : result) {
+            for (int rank = 0; rank < result.size(); rank++) {
+                Document document = result.get(rank);
                 String key = document.getId() != null ? document.getId() : document.getText();
-                if (!seen.contains(key)) {
-                    seen.add(key);
-                    merged.add(document);
-                }
+                documents.putIfAbsent(key, document);
+                scores.merge(key, 1.0 / (RRF_K + rank + 1), Double::sum);
             }
         }
-        return merged;
+        // LinkedHashMap이 삽입 순서를 유지하고 stream().sorted()가 안정 정렬이라, 동점은 원래 순서를 따른다.
+        return documents.keySet().stream()
+                .sorted(Comparator.comparingDouble(scores::get).reversed())
+                .map(documents::get)
+                .toList();
     }
 }

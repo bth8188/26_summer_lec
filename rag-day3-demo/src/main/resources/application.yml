@@ -16,6 +16,10 @@ spring:
   mvc:
     async:
       request-timeout: 600000  # 10분 — 청크가 많은 PDF 인덱싱/느린 rerank 도중 스트림이 끊기지 않게
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ragdb
+    username: postgres
+    password: postgres
   ai:
     ollama:
       base-url: http://localhost:11434
@@ -25,6 +29,15 @@ spring:
       chat:
         options:
           model: llama3.2:3b
+    vectorstore:
+      pgvector:
+        # Day1/Day2와 같은 ragdb를 쓰되 테이블은 분리한다. 기본값(vector_store)을 그대로 쓰면
+        # 문서를 선택하지 않았을 때 Day1/Day2가 남긴 청크가 docId 필터를 통과해 근거로 섞여 든다
+        table-name: vector_store_day3
+        initialize-schema: true   # 위 테이블과 vector 확장을 없으면 만들어준다 (첫 기동에 필요)
+        dimensions: 1024          # bge-m3의 임베딩 차원. 임베딩 모델을 바꾸면 이 값도 같이 바꿔야 한다
+        index-type: HNSW          # 근사 최근접 인덱스. 청크가 수천 개를 넘어가면 체감 차이가 크다
+        distance-type: COSINE_DISTANCE
 
 # Next.js 프론트(기본 localhost:3000)에서 이 API를 fetch로 직접 호출하기 위한 CORS 허용 origin
 app:

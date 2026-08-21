@@ -1,8 +1,14 @@
 package com.lecture.rag.day3.pipeline;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +52,12 @@ public abstract class AbstractRagPipeline implements RagPipeline {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractRagPipeline.class);
 
+    /** LLM 응답에서 첫 번째 숫자(정수 또는 소수)를 집어내는 패턴. */
+    private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?");
+
+    /** 줄 앞의 글머리 기호("1.", "2)", "-", "*", "•")를 떼어내는 패턴. */
+    private static final Pattern LIST_MARKER = Pattern.compile("^(?:\\d+[.)]|[-*•])\\s*");
+
     protected static final String STEP_ANALYZE = "analyze";
     protected static final String STEP_RETRIEVE = "retrieve";
     protected static final String STEP_KEYWORD = "keyword";
@@ -76,12 +88,207 @@ public abstract class AbstractRagPipeline implements RagPipeline {
 
     /**
      * (2-b) 키워드 검색 — 벡터 검색이 놓치는 정확한 고유명사/조항 번호를 잡기 위한 검색.
-     * {@code knowledgeBase.allChunks()}로 전체 청크를 받아서 직접 점수를 매기면 된다.
      *
-     * @return 키워드 검색으로 찾은 청크. {@code Optional.empty()} = 미구현
+     * <p>여기에 기본 구현(TF-IDF 방식의 단어 매칭)이 들어 있다. LLM을 부르지 않는 순수 계산이라
+     * 모든 파이프라인이 공유해도 부작용이 없어서 베이스 클래스에 둔다. 서브클래스는
+     * {@link #supportedFeatures()}에 {@link RagOptions#FEATURE_KEYWORD}를 선언하기만 하면 바로 쓸 수 있고,
+     * BM25나 형태소 분석기를 붙이고 싶으면 이 메서드를 오버라이드하면 된다.
+     *
+     * <p>점수 = {@code (1 + log(tf)) × log(1 + N/df)} — 등장 횟수(tf)는 log로 눌러서 같은 단어의
+     * 반복이 과대평가되지 않게 하고, 문서빈도(df)로 모든 청크에 다 나오는 흔한 단어의 가중치를 낮춘다.
+     *
+     * @return 키워드 검색으로 찾은 청크(점수 내림차순). {@code Optional.empty()} = 미구현
      */
     protected Optional<List<Document>> keywordSearch(String query, List<String> docIds, RagOptions options) {
+        List<String> terms = keywordsOf(query);
+        List<Document> chunks = this.knowledgeBase.chunksOf(docIds);
+        if (terms.isEmpty() || chunks.isEmpty()) {
+            // 걸러낼 단어가 없어도 "미구현"은 아니다 — 빈 목록을 돌려줘야 TODO 카드가 안 뜬다.
+            return Optional.of(List.of());
+        }
+
+        // 본문 소문자 변환은 여기서 한 번만 — 아래에서 청크×단어 횟수만큼 반복해서 뒤지기 때문이다.
+        List<String> bodies = new ArrayList<>(chunks.size());
+        for (Document chunk : chunks) {
+            bodies.add(chunk.getText() == null ? "" : chunk.getText().toLowerCase(Locale.ROOT));
+        }
+
+        // 조사를 떼어낸 실제 검색어로 바꾼다. 이걸 안 하면 "제12조에"가 문서의 "제12조"와 매치되지 않아
+        // 문장으로 질문하는 순간 키워드 검색이 통째로 무력화된다.
+        List<String> matchable = new ArrayList<>(terms.size());
+        for (String term : terms) {
+            matchableTerm(term, bodies).ifPresent(matchable::add);
+        }
+        if (matchable.isEmpty()) {
+            return Optional.of(List.of());
+        }
+
+        // 단어별 문서빈도(df) — 모든 청크에 다 나오는 흔한 단어의 가중치를 낮추는 재료다(BM25의 IDF 부분).
+        Map<String, Integer> docFreq = new HashMap<>();
+        for (String term : matchable) {
+            int hits = 0;
+            for (String body : bodies) {
+                if (body.contains(term)) {
+                    hits++;
+                }
+            }
+            docFreq.put(term, hits);
+        }
+
+        List<Scored> scored = new ArrayList<>();
+        for (int i = 0; i < chunks.size(); i++) {
+            double score = 0.0;
+            for (String term : matchable) {
+                int freq = countOccurrences(bodies.get(i), term);
+                if (freq == 0) {
+                    continue;
+                }
+                double idf = Math.log(1.0 + (double) chunks.size() / docFreq.get(term));
+                score += (1.0 + Math.log(freq)) * idf;
+            }
+            if (score > 0.0) {
+                // 점수 0인 청크는 버린다. 남기면 관련 없는 청크가 컨텍스트를 오염시킨다.
+                scored.add(new Scored(chunks.get(i), score));
+            }
+        }
+
+        scored.sort(Comparator.comparingDouble(Scored::score).reversed());
+        int limit = Math.min(options.topKOrDefault(), scored.size());
+        return Optional.of(scored.subList(0, limit).stream().map(Scored::document).toList());
+    }
+
+    /** 키워드 검색에서 점수를 매긴 청크 하나. */
+    protected record Scored(Document document, double score) {
+    }
+
+    /**
+     * 검색어를 문서에 실제로 존재하는 형태로 바꾼다.
+     *
+     * <p>한국어는 교착어라 질문에서는 조사가 붙어 나온다 — "제12조에", "연회비를", "삼각대는".
+     * 문서에는 "제12조", "연회비", "삼각대"로 적혀 있으니 그대로 비교하면 하나도 안 걸린다.
+     * 형태소 분석기(은전한닢 등) 없이 근사하려고, 원형이 안 맞으면 뒤에서 한 글자씩 떼며 다시 시도한다.
+     *
+     * <p>떼는 건 최대 2글자까지다(을/를/은/는/이/가/에/의, 으로/에서/부터 같은 흔한 조사 길이).
+     * 더 떼면 짧은 단어가 아무 데나 걸려서 관련 없는 청크가 딸려 온다. 남는 길이도 2글자 이상만 인정한다.
+     *
+     * @return 문서에 등장하는 형태. 아무리 떼어도 안 나오면 {@code Optional.empty()} (그 단어는 버린다)
+     */
+    protected static Optional<String> matchableTerm(String term, List<String> bodies) {
+        int shortest = Math.max(2, term.length() - 2);
+        for (int length = term.length(); length >= shortest; length--) {
+            String candidate = term.substring(0, length);
+            for (String body : bodies) {
+                if (body.contains(candidate)) {
+                    return Optional.of(candidate);
+                }
+            }
+        }
         return Optional.empty();
+    }
+
+    // ------------------------------------------------------------------ LLM 호출 공용 도구
+
+    /**
+     * 훅 구현에서 LLM에게 한 번 묻고 답을 받는다. temperature는 0으로 고정한다 —
+     * 재작성·채점·검증은 전부 판정 성격의 작업이라, 같은 입력에 매번 다른 답이 나오면
+     * "정말 나아졌는지" 비교 자체가 불가능해진다.
+     *
+     * <p>답변 생성({@code doGenerate})만 사용자가 정한 temperature를 쓴다. 그쪽은 문장을 쓰는 일이다.
+     */
+    protected String ask(String prompt) {
+        return chatClient().prompt()
+                .options(ChatOptions.builder().temperature(0.0))
+                .user(prompt)
+                .call()
+                .content();
+    }
+
+    /**
+     * LLM 응답에서 첫 번째 숫자를 뽑아 범위 안으로 자른다. "숫자만 답하라"고 해도
+     * "이 문서는 8점입니다"처럼 답하는 모델이 많아서 필요하다.
+     *
+     * <p>한계: "10점 만점에 7점"이면 10을 집는다. 프롬프트를 강하게 쓰는 게 1차 방어다.
+     *
+     * @param fallback 숫자가 없거나 파싱에 실패했을 때 쓸 값
+     */
+    protected static double firstNumber(String text, double fallback, double min, double max) {
+        if (text == null) {
+            return fallback;
+        }
+        Matcher matcher = NUMBER_PATTERN.matcher(text);
+        if (!matcher.find()) {
+            return fallback;
+        }
+        try {
+            return Math.clamp(Double.parseDouble(matcher.group()), min, max);
+        }
+        catch (NumberFormatException ex) {
+            return fallback;
+        }
+    }
+
+    /**
+     * LLM 응답에서 화면에 띄울 한 줄만 뽑는다. "한 줄만" 이라고 해도 여러 줄로 답하는 모델이 있고,
+     * 단계 카드·배너에 그대로 들어가는 문자열이라 길면 화면이 깨진다.
+     */
+    protected static String firstLine(String text, int maxChars, String fallback) {
+        if (text == null || text.isBlank()) {
+            return fallback;
+        }
+        String line = text.strip().split("\\R", 2)[0].strip();
+        if (line.isEmpty()) {
+            return fallback;
+        }
+        return line.length() > maxChars ? line.substring(0, maxChars) + "…" : line;
+    }
+
+    /**
+     * LLM 응답을 줄 단위로 쪼개고, 앞의 글머리 기호("1.", "2)", "-", "*", "•")를 떼어낸다.
+     * "번호를 붙이지 말라"고 해도 목록으로 답하는 모델이 많아서 필요하다. 빈 줄은 버린다.
+     */
+    protected static List<String> cleanedLines(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        List<String> lines = new ArrayList<>();
+        for (String raw : text.split("\\R")) {
+            String line = LIST_MARKER.matcher(raw.strip()).replaceFirst("").strip();
+            if (!line.isEmpty()) {
+                lines.add(line);
+            }
+        }
+        return lines;
+    }
+
+    /**
+     * 질문을 검색어 목록으로. 공백으로 쪼갠 뒤 앞뒤 문장부호만 떼어낸다("제12조는," → "제12조는").
+     * 가운데 붙임표는 살려둔다 — RTX-4090 같은 모델명이 쪼개지면 안 되기 때문이다.
+     */
+    protected static List<String> keywordsOf(String query) {
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+        List<String> terms = new ArrayList<>();
+        for (String raw : query.toLowerCase(Locale.ROOT).split("\\s+")) {
+            String term = raw.replaceAll("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$", "");
+            // 불용어 목록은 따로 두지 않는다 — "무엇을", "알려줘" 같은 말은 문서에 안 나와서 매치가 0이고,
+            // 문서에 실제로 흔한 단어는 아래 점수 계산의 IDF가 알아서 가중치를 떨어뜨린다.
+            if (term.length() >= 2 && !terms.contains(term)) {
+                terms.add(term);
+            }
+        }
+        return terms;
+    }
+
+    /** body 안에 term이 몇 번 나오는지. 둘 다 이미 소문자인 것을 전제한다. */
+    protected static int countOccurrences(String body, String term) {
+        int count = 0;
+        int from = body.indexOf(term);
+        while (from >= 0) {
+            count++;
+            from = body.indexOf(term, from + term.length());
+        }
+        return count;
     }
 
     /**
@@ -210,7 +417,9 @@ public abstract class AbstractRagPipeline implements RagPipeline {
                 perQuery.add(AbstractRagPipeline.this.knowledgeBase.search(
                         query, searchTopK, threshold, this.request.docIdsOrEmpty()));
             }
-            this.candidates = RagPrompts.mergeDistinct(perQuery);
+            // RRF로 융합한다. 이어붙이면 첫 쿼리 결과가 topK를 다 차지해서 재작성이 찾아온 청크가
+            // 아래 finalizeSources의 절단에 전부 잘려나간다.
+            this.candidates = RagPrompts.fuseByRank(perQuery);
             this.retrieveMs = System.currentTimeMillis() - t0;
 
             String detail = this.candidates.size() + "개 청크"
@@ -235,7 +444,9 @@ public abstract class AbstractRagPipeline implements RagPipeline {
                 }
                 else {
                     int before = this.candidates.size();
-                    this.candidates = RagPrompts.mergeDistinct(List.of(this.candidates, keywordHits.get()));
+                    // 벡터 결과와 키워드 결과는 점수 척도가 완전히 다르다(코사인 0~1 vs TF-IDF).
+                    // RRF는 순위로만 합치므로 정규화 없이 섞이고, 양쪽이 모두 찾은 청크가 위로 올라온다.
+                    this.candidates = RagPrompts.fuseByRank(List.of(this.candidates, keywordHits.get()));
                     events.add(AgentEvent.stepDone(STEP_KEYWORD, "키워드 검색 (하이브리드)",
                             System.currentTimeMillis() - k0,
                             "키워드로 " + keywordHits.get().size() + "개 추가 → 후보 " + before + "개에서 "
@@ -273,7 +484,16 @@ public abstract class AbstractRagPipeline implements RagPipeline {
                     }));
         }
 
-        /** 최종 근거 확정 + 프론트로 전송. */
+        /**
+         * 최종 근거 확정 + 프론트로 전송.
+         *
+         * <p>여기서 topK개로 자른다. 자르는 것 자체는 맞다 — 컨텍스트에 넣을 청크 수는 사용자가 정한다.
+         * 중요한 건 <b>자르기 전에 후보가 어떤 순서로 놓여 있느냐</b>다. 예전에는 검색 결과를 단순히
+         * 이어붙여서 벡터 검색 결과가 앞자리를 독점했고, 키워드 검색과 질문 재작성이 찾아온 청크는
+         * 항상 뒤로 밀려 여기서 잘려나갔다(화면에는 "N개 추가"라고 뜨는데 답변은 그대로였던 원인).
+         * 지금은 {@link RagPrompts#fuseByRank}가 순위로 융합해 두므로, 어느 검색 방식이 찾았든
+         * 상위권이면 topK 안에 들어온다.
+         */
         private List<AgentEvent> finalizeSources(List<Document> documents) {
             this.selected = documents.size() > this.options.topKOrDefault()
                     ? documents.subList(0, this.options.topKOrDefault())

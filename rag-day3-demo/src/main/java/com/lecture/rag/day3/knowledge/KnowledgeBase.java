@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,14 +21,19 @@ import org.springframework.stereotype.Component;
  * 캡스톤은 여러 문서를 동시에 얹고 문서별로 지우는 게 가능해야 하므로, VectorStore 하나를 계속 쓰면서
  * 어떤 청크가 어떤 문서 소속인지 {@code docId} 메타데이터로 관리한다.
  *
- * <p><b>메모리에만 저장된다</b> — 백엔드를 재시작하면 인덱스는 사라진다.
- * 유지하고 싶으면 {@link SimpleVectorStore#save(java.io.File)} / {@code load(File)}를 써서
- * 기동 시 불러오도록 고쳐보는 게 좋은 확장 과제다.
+ * <p><b>저장소는 PGVector다</b>(Day2에서 쓴 것). {@code SimpleVectorStore}를 직접 만들지 않고
+ * 스프링이 자동 구성한 {@link VectorStore} 빈을 주입받는다. 이 클래스는 인터페이스에만 의존하므로,
+ * 나중에 다른 벡터 DB로 갈아끼워도 여기 코드는 그대로다.
  *
- * <p><b>PGVector로 바꾸고 싶다면</b>(Day2에서 쓴 것): pom.xml에
- * {@code spring-ai-starter-vector-store-pgvector}를 추가하고 이 클래스의 {@code store} 초기화를
- * 주입받은 {@code VectorStore} 빈으로 바꾸면 된다. 나머지 코드는 그대로 동작한다 —
- * {@code VectorStore} 인터페이스에만 의존하도록 짜여 있기 때문이다.
+ * <p><b>기동 조건</b>: Postgres가 떠 있어야 앱이 뜬다. 접속 정보는 {@code application.yml}의
+ * {@code spring.datasource}, 테이블 자동 생성은 {@code spring.ai.vectorstore.pgvector.initialize-schema},
+ * 벡터 차원은 임베딩 모델(bge-m3 = 1024)과 반드시 맞아야 한다.
+ *
+ * <p><b>주의 — 재시작하면 절반만 살아남는다.</b> 벡터는 DB에 남지만, 아래 {@code documents}와
+ * {@code chunksByDoc}는 여전히 메모리에만 있다. 그래서 재시작 후 화면의 문서 목록은 비어 보이고,
+ * DB에는 이전 청크가 그대로 남아 검색에 섞여 든다. 완전한 영속화는
+ * {@code IndexedDocument}를 별도 테이블에 저장하고 기동 시 복원해야 끝난다 — 좋은 확장 과제다.
+ * 그 전까지는 재시작 후 {@link #clear()}(화면의 "전체 삭제")로 DB를 비우고 시작하는 게 안전하다.
  */
 @Component
 public class KnowledgeBase {
@@ -36,7 +41,7 @@ public class KnowledgeBase {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeBase.class);
 
     private final EmbeddingModel embeddingModel;
-    private final SimpleVectorStore store;
+    private final VectorStore store;
 
     /** docId -> 문서 메타. 업로드 순서를 유지하려고 LinkedHashMap. */
     private final Map<String, IndexedDocument> documents = new LinkedHashMap<>();
@@ -47,9 +52,13 @@ public class KnowledgeBase {
      */
     private final Map<String, List<Document>> chunksByDoc = new LinkedHashMap<>();
 
-    public KnowledgeBase(EmbeddingModel embeddingModel) {
+    /**
+     * @param store 스프링이 자동 구성한 PGVector 저장소. 직접 new 하지 않고 주입받는 게 핵심이다 —
+     *              벡터 DB를 바꾸려면 pom.xml의 스타터만 갈아끼우면 되고 이 클래스는 안 건드린다.
+     */
+    public KnowledgeBase(EmbeddingModel embeddingModel, VectorStore store) {
         this.embeddingModel = embeddingModel;
-        this.store = SimpleVectorStore.builder(embeddingModel).build();
+        this.store = store;
     }
 
     public EmbeddingModel embeddingModel() {
@@ -111,11 +120,13 @@ public class KnowledgeBase {
                 .topK(topK)
                 .similarityThreshold(similarityThreshold);
         if (docIds != null && !docIds.isEmpty()) {
-            // SimpleVectorStore도 메타데이터 필터를 지원한다 — PGVector에서 쓰던 문법 그대로
+            // 메타데이터 필터 — PGVector에서는 jsonb 컬럼 조건으로 번역된다
             String quoted = docIds.stream().map(id -> "'" + id + "'").reduce((a, b) -> a + ", " + b).orElse("''");
             builder.filterExpression("docId in [" + quoted + "]");
         }
-        return this.store.similaritySearch(builder.build());
+        // VectorStore 인터페이스는 null을 돌려줄 수 있다고 선언되어 있다. 호출부가 전부 List를 전제하므로 여기서 막는다.
+        List<Document> hits = this.store.similaritySearch(builder.build());
+        return hits == null ? List.of() : hits;
     }
 
     public List<Document> search(String query, int topK, double similarityThreshold) {
