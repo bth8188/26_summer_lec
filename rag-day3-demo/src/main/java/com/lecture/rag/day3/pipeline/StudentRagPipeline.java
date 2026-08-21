@@ -38,6 +38,8 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     public StudentRagPipeline(KnowledgeBase knowledgeBase, ChatModel chatModel) {
         super(knowledgeBase, chatModel);
     }
+    private record KeywordScore(Document document, long score) {
+    }
 
     @Override
     public String id() {
@@ -120,9 +122,44 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      * @return 키워드로 찾은 청크. 구현 전에는 {@code Optional.empty()}
      */
     @Override
-    protected Optional<List<Document>> keywordSearch(String query, List<String> docIds, RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+    protected Optional<List<Document>> keywordSearch(
+            String query,
+            List<String> docIds,
+            RagOptions options) {
+
+        // 검색 대상으로 선택된 문서의 전체 청크
+        List<Document> chunks = knowledgeBase.chunksOf(docIds);
+
+        // 질문을 단어 단위로 나누고 너무 짧은 단어는 제외
+        List<String> keywords = List.of(query.toLowerCase().split("\\s+"))
+                .stream()
+                .map(word -> word.replaceAll("[^가-힣a-zA-Z0-9_-]", ""))
+                .filter(word -> word.length() >= 2)
+                .toList();
+
+        if(keywords.isEmpty()){
+            return Optional.of(List.of());
+        }
+
+        List<Document> result = chunks.stream()
+                .map(doc -> {
+                    String text = doc.getText().toLowerCase();
+
+                    long score = keywords.stream()
+                            .filter(text::contains)
+                            .count();
+
+                    return new KeywordScore(doc, score);
+                })
+                .filter(item -> item.score() > 0)
+                .sorted((a, b) -> Long.compare(b.score(), a.score()))
+                .limit(options.topKOrDefault())
+                .map(KeywordScore::document)
+                .toList();
+
+        return Optional.of(result);
+
+
     }
 
     // =================================================================== 실버 ③
