@@ -9,6 +9,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.document.Document;
 
 import com.lecture.rag.day3.agent.ChatRequest;
+import com.lecture.rag.day3.agent.RagOptions;
 import com.lecture.rag.day3.agent.SourceRef;
 
 /**
@@ -36,6 +37,27 @@ public final class RagPrompts {
                예시: "제주도의 면적은 1,846km²입니다.[1] 연평균기온은 16도입니다.[2][3]"
             4. 문서에 있는 표현을 최대한 그대로 인용하고, 3~6문장으로 간결하게 정리합니다.
             """;
+
+    /**
+     * "빙의" — {@code options.extras.persona}가 있으면 그 캐릭터의 말투로 답하라는 지시를
+     * 시스템 프롬프트 뒤에 덧붙인다(문서 기반 답변 규칙을 먼저 확정시킨 뒤, 가장 마지막에 읽는 지시가
+     * 말투 지시가 되게 하려는 의도 — 소형 로컬 모델은 지시가 뒤에 있을수록 더 잘 따르는 경향이 있다).
+     * 규칙은 내용에 적용되고 캐릭터는 말투에만 적용되므로 "문서 기반으로만 답한다"는 원칙은 안 깨진다.
+     */
+    public static String withPersona(String systemPrompt, RagOptions options) {
+        Object persona = options.extra("persona", null);
+        if (!(persona instanceof String personaText) || personaText.isBlank()) {
+            return systemPrompt;
+        }
+        String personaInstruction = """
+
+
+                [말투 지시 — 반드시 지킬 것]
+                너는 "%s"이다. 위의 내용 규칙은 그대로 지키되, 어투와 말버릇만 "%s"처럼 확 바꿔서 답하라.
+                평범하고 딱딱한 설명체로 답하면 안 된다. 문장 끝맺음부터 그 캐릭터답게 써라.
+                """.formatted(personaText.strip(), personaText.strip());
+        return systemPrompt + personaInstruction;
+    }
 
     /** 검색된 청크들을 번호가 붙은 컨텍스트 블록으로 만든다. */
     public static String formatContext(List<SourceRef> sources) {

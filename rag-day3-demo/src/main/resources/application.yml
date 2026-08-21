@@ -9,6 +9,10 @@ server:
 spring:
   application:
     name: rag-day3-demo
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ragdb
+    username: postgres
+    password: postgres
   servlet:
     multipart:
       max-file-size: 30MB
@@ -25,6 +29,12 @@ spring:
       chat:
         options:
           model: llama3.2:3b
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 1024   # bge-m3 기준 — 임베딩 모델과 반드시 일치
+        initialize-schema: true
 
 # Next.js 프론트(기본 localhost:3000)에서 이 API를 fetch로 직접 호출하기 위한 CORS 허용 origin
 app:

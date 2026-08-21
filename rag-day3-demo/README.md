@@ -23,6 +23,11 @@ ollama pull bge-m3
 ollama pull llama3.2:3b
 ```
 
+**PGVector 기동** (문서 인덱스 저장소)
+```bash
+docker compose up -d
+```
+
 ## 실행 방법
 ```bash
 ./run.sh        # macOS/Linux, 포트 8081
@@ -108,11 +113,11 @@ curl -N -X POST http://localhost:8081/api/chat -H 'Content-Type: application/jso
 
 ## 알아둘 것
 
-- **인덱스는 메모리에만 있다.** 백엔드를 재시작하면 문서를 다시 올려야 한다.
-  유지하고 싶으면 `SimpleVectorStore.save(File)` / `load(File)`을 붙이는 게 좋은 확장 과제다.
-- **PGVector로 바꾸려면** `pom.xml`에 `spring-ai-starter-vector-store-pgvector`를 추가하고
-  `KnowledgeBase`의 store 생성 부분만 주입받은 `VectorStore` 빈으로 교체하면 된다
-  (나머지 코드는 `VectorStore` 인터페이스에만 의존한다).
+- **벡터 인덱스는 PGVector(Postgres)에 저장된다.** `docker compose up -d`로 띄운 컨테이너가 살아있는 한
+  백엔드를 재시작해도 문서를 다시 올릴 필요가 없다(Day2 Lab2.1과 동일한 방식). 단, 키워드 검색에 쓰는
+  원본 청크 목록(`KnowledgeBase#chunksByDoc`)은 여전히 메모리 전용이라 재시작하면 비워진다.
+- `KnowledgeBase`는 `VectorStore` 인터페이스에만 의존하므로, 다른 벡터스토어로 바꾸고 싶으면
+  주입되는 `VectorStore` 빈만 교체하면 된다.
 - **CORS**는 `application.yml`의 `app.cors.allowed-origin`(기본 `http://localhost:3000`)만 허용한다.
   프론트를 다른 포트로 띄우면 여기도 같이 바꿀 것.
 - **스캔 이미지 PDF**는 텍스트 레이어가 없어 0자로 읽힌다(경고 이벤트가 뜬다). OCR은 수업 범위 밖.

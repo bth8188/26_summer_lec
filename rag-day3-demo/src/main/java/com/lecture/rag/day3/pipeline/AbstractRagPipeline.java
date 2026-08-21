@@ -299,6 +299,7 @@ public abstract class AbstractRagPipeline implements RagPipeline {
             String systemPrompt = this.options.systemPrompt() == null || this.options.systemPrompt().isBlank()
                     ? RagPrompts.DEFAULT_SYSTEM_PROMPT
                     : this.options.systemPrompt();
+            systemPrompt = RagPrompts.withPersona(systemPrompt, this.options);
             List<Message> history = RagPrompts.historyMessages(
                     this.request.historyOrEmpty(), this.options.maxHistoryOrDefault());
 

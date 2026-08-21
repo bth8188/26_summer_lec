@@ -168,6 +168,22 @@ export function SettingsPanel({
             </p>
           </section>
 
+          {/* 빙의 */}
+          <section>
+            <SectionLabel>캐릭터 빙의</SectionLabel>
+            <input
+              type="text"
+              className="input"
+              value={settings.persona}
+              placeholder='예: 츤데레 사서, 해적선장, 삐친 고양이 집사...'
+              onChange={(event) => updateSettings({ persona: event.target.value })}
+            />
+            <p className="mt-1.5 text-[11px] leading-snug text-subtle">
+              말투만 바뀝니다 — 문서에 없는 내용은 여전히 "찾을 수 없다"고 답하고 인용 규칙([1])도 그대로
+              지킵니다. 비워두면 평소 말투로 돌아갑니다.
+            </p>
+          </section>
+
           {/* 시스템 프롬프트 */}
           <section>
             <SectionLabel>시스템 프롬프트</SectionLabel>

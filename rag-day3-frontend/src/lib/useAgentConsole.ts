@@ -243,6 +243,7 @@ export function useAgentConsole() {
                   maxHistory: settings.maxHistory,
                   systemPrompt: settings.systemPrompt || undefined,
                   features: settings.features,
+                  extras: settings.persona ? { persona: settings.persona } : undefined,
                 },
               },
               controller.signal,

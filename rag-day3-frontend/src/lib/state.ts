@@ -82,6 +82,7 @@ export interface Settings {
   temperature: number;
   maxHistory: number;
   systemPrompt: string;
+  persona: string;
   features: Record<string, boolean>;
   strategy: string;
   chunkSize: number;
@@ -97,6 +98,7 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: 0.2,
   maxHistory: 4,
   systemPrompt: "",
+  persona: "",
   features: { rewrite: false, keyword: false, rerank: false, selfCheck: false },
   strategy: "TOKEN",
   chunkSize: 400,

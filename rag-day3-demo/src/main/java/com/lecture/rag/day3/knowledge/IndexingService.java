@@ -173,7 +173,7 @@ public class IndexingService {
         for (int i = 0; i < chunks.size(); i++) {
             Document chunk = chunks.get(i);
             Document.Builder builder = Document.builder()
-                    .text(chunk.getText())
+                    .text(sanitize(chunk.getText()))
                     .metadata(new java.util.LinkedHashMap<>(chunk.getMetadata()))
                     .metadata("docId", docId)
                     .metadata("fileName", fileName)
@@ -186,6 +186,15 @@ public class IndexingService {
             result.add(builder.build());
         }
         return result;
+    }
+
+    /**
+     * PDF에서 텍스트를 추출하다 보면 널 바이트(0x00)가 섞여 들어올 때가 있는데, Postgres는
+     * text 컬럼에 널 바이트를 허용하지 않아 저장 시 {@code DataIntegrityViolationException}이 난다
+     * ("invalid byte sequence for encoding UTF8: 0x00"). 저장 직전에 제거해서 방어한다.
+     */
+    private static String sanitize(String text) {
+        return text == null ? "" : text.replace("\u0000", "");
     }
 
     private static void deleteQuietly(Path path) {

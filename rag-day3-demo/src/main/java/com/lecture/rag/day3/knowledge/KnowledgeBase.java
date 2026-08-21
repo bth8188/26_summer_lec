@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,14 +21,12 @@ import org.springframework.stereotype.Component;
  * 캡스톤은 여러 문서를 동시에 얹고 문서별로 지우는 게 가능해야 하므로, VectorStore 하나를 계속 쓰면서
  * 어떤 청크가 어떤 문서 소속인지 {@code docId} 메타데이터로 관리한다.
  *
- * <p><b>메모리에만 저장된다</b> — 백엔드를 재시작하면 인덱스는 사라진다.
- * 유지하고 싶으면 {@link SimpleVectorStore#save(java.io.File)} / {@code load(File)}를 써서
- * 기동 시 불러오도록 고쳐보는 게 좋은 확장 과제다.
- *
- * <p><b>PGVector로 바꾸고 싶다면</b>(Day2에서 쓴 것): pom.xml에
- * {@code spring-ai-starter-vector-store-pgvector}를 추가하고 이 클래스의 {@code store} 초기화를
- * 주입받은 {@code VectorStore} 빈으로 바꾸면 된다. 나머지 코드는 그대로 동작한다 —
- * {@code VectorStore} 인터페이스에만 의존하도록 짜여 있기 때문이다.
+ * <p><b>PGVector 사용 중</b>(Day2에서 쓴 것과 동일): {@code pom.xml}의
+ * {@code spring-ai-starter-vector-store-pgvector}와 {@code application.yml}의
+ * {@code spring.ai.vectorstore.pgvector} 설정으로 Spring이 자동 구성해주는 {@link VectorStore} 빈을
+ * 그대로 주입받아 쓴다 — 이 클래스는 {@code VectorStore} 인터페이스에만 의존하므로 나머지 코드는
+ * {@code SimpleVectorStore}를 쓰던 때와 동일하게 동작한다. 벡터는 Postgres에 저장되어 백엔드를
+ * 재시작해도 남지만, 키워드 검색용 원본 청크를 담아두는 {@code chunksByDoc}은 여전히 메모리 전용이다.
  */
 @Component
 public class KnowledgeBase {
@@ -36,7 +34,7 @@ public class KnowledgeBase {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeBase.class);
 
     private final EmbeddingModel embeddingModel;
-    private final SimpleVectorStore store;
+    private final VectorStore store;
 
     /** docId -> 문서 메타. 업로드 순서를 유지하려고 LinkedHashMap. */
     private final Map<String, IndexedDocument> documents = new LinkedHashMap<>();
@@ -47,9 +45,9 @@ public class KnowledgeBase {
      */
     private final Map<String, List<Document>> chunksByDoc = new LinkedHashMap<>();
 
-    public KnowledgeBase(EmbeddingModel embeddingModel) {
+    public KnowledgeBase(EmbeddingModel embeddingModel, VectorStore store) {
         this.embeddingModel = embeddingModel;
-        this.store = SimpleVectorStore.builder(embeddingModel).build();
+        this.store = store;
     }
 
     public EmbeddingModel embeddingModel() {

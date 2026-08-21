@@ -88,8 +88,8 @@ LLM에게 다시 물어보고, 없으면 경고를 띄운다(Self-RAG의 축소�
   디버깅 로그를 화면으로 빼는 용도로 쓰면 편하다.
 - **청킹 전략 추가**: `ChunkingStrategy` enum에 상수 하나 + `split()`에 분기 추가 →
   왼쪽 패널 드롭다운에 자동 등록. Day2의 `SemanticChunker`를 옮겨보는 게 좋은 소재.
-- **인덱스 영속화**: `SimpleVectorStore.save/load`로 재시작해도 문서가 남게 만들기.
-- **PGVector로 교체**: Day2에서 쓰던 방식. `KnowledgeBase`의 store만 바꾸면 된다.
+- **인덱스 영속화**: 벡터는 PGVector에 남지만, 키워드 검색용 원본 청크(`KnowledgeBase#chunksByDoc`)는
+  아직 메모리 전용이다. 기동 시 Postgres에서 청크를 다시 읽어와 채워보기.
 - **프론트 손보기**: 화면도 그대로 열려 있다. 새 지표 배지, 근거 정렬 방식, 다크/라이트 색상 등
   `rag-day3-frontend/src/components/` 를 고치면 된다.
 

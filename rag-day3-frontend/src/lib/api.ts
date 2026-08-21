@@ -67,6 +67,7 @@ export interface ChatRequestBody {
     maxHistory: number;
     systemPrompt?: string;
     features: Record<string, boolean>;
+    extras?: Record<string, unknown>;
   };
 }
 
