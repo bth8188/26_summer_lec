@@ -25,3 +25,49 @@ spring:
 logging:
   level:
     org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: DEBUG
+
+---
+# ─────────────────────────────────────────────────────────────
+# Lab 2.4 (chatbot 프로필)에서만 적용되는 오버라이드.
+# 위 설정을 덮어쓰되, lab21~23 실행에는 영향을 주지 않는다.
+# ─────────────────────────────────────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: chatbot
+  main:
+    # CLI 전용이라 웹 서버를 띄우지 않는다.
+    # (starter-web 때문에 기본값이면 톰캣이 떠 있어서 /exit로 루프를 나와도 프로세스가 안 죽는다)
+    web-application-type: none
+    banner-mode: "off"
+
+logging:
+  level:
+    # 대화 화면이 프레임워크 로그로 뒤덮이지 않게 낮춘다. 경고/에러는 그대로 보인다.
+    root: warn
+    # 위에서 DEBUG로 켜둔 프롬프트 덤프 — 챗봇에선 매 턴 프롬프트 전문이 찍혀 대화를 못 읽는다.
+    # 프롬프트 조립 과정을 보고 싶으면 이 줄을 debug로 바꿀 것.
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: "off"
+
+---
+# ─────────────────────────────────────────────────────────────
+# Lab 2.4 (api 프로필) — 같은 챗봇 로직을 REST + Swagger로 노출.
+# chatbot 프로필과 달리 웹 서버를 그대로 띄운다.
+#   http://localhost:8080/swagger-ui.html
+# ─────────────────────────────────────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: api
+
+logging:
+  level:
+    # 요청마다 프롬프트 전문이 찍히면 로그를 못 읽는다. 필요하면 debug로 바꿀 것.
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: "off"
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+  api-docs:
+    path: /v3/api-docs
