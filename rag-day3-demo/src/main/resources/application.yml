@@ -1,0 +1,29 @@
+server:
+  port: 8081   # day1/day2(8080)와 동시에 띄울 수 있게 포트를 분리
+
+spring:
+  application:
+    name: rag-day3-demo
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      embedding:
+        options:
+          model: bge-m3   # 실측 결과 nomic-embed-text는 한국어 의미 구분에 실패함 — 반드시 bge-m3 사용
+      chat:
+        options:
+          model: llama3.2:3b
+
+# Next.js 프론트(기본 localhost:3000)에서 이 API를 fetch로 직접 호출하기 위한 CORS 허용 origin
+app:
+  cors:
+    allowed-origin: http://localhost:3000
+
+# QuestionAnswerAdvisor가 LLM에 최종적으로 넘기는 프롬프트를 콘솔에 출력
+logging:
+  level:
+    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: DEBUG
