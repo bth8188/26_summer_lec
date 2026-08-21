@@ -21,6 +21,7 @@ docker compose up -d        # PGVector (Lab2.1부터 필요)
 ./run.sh mmr                   # M2.3 — MMR: 순수 Top-K vs MMR(다양성 확보) 비교
 ./run.sh lab21                 # Lab2.1 — PGVector 인덱싱 (docker compose up -d 먼저 실행할 것)
 ./run.sh lab22                 # Lab2.2/M2.4 — LLM 기반 리랭크 데모
+./run.sh query-transform       # M2.5 — QueryTransformer: 질문 재작성 단독 + Transform/Retrieve/Rerank 파이프라인 비교
 ./run.sh lab23                 # Lab2.4 — RAG를 도구로 쓰기(Agentic RAG) vs 프롬프트 바인딩형 비교
 ```
 
@@ -30,6 +31,7 @@ run.bat chunking-strategies
 run.bat mmr
 run.bat lab21
 run.bat lab22
+run.bat query-transform
 run.bat lab23
 ```
 (원한다면 `mvnw spring-boot:run -Dspring-boot.run.profiles=<이름>`으로 직접 실행해도 동일하게 동작함 — `run.sh`/`run.bat`은 그 명령을 대신 기억해주는 것뿐. Windows에서는 `mvnw.cmd`)
@@ -52,6 +54,8 @@ com.lecture.rag
 ├── lab22/                                  — M2.4 Re-ranking 참고 구현
 │   ├── LlmReranker.java
 │   └── RerankDemo.java                    (@Profile("lab22"))
+├── m25query/                               — M2.5 Query Transformation 참고 구현 (lab22의 LlmReranker 재사용)
+│   └── QueryTransformDemo.java            (@Profile("query-transform"))
 └── lab23/                                  — Lab2.4 Agentic RAG 참고 구현
     ├── DocumentSearchTool.java
     └── RagAsToolDemo.java                 (@Profile("lab23"))
