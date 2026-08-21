@@ -32,7 +32,7 @@ import com.lecture.rag.day3.knowledge.KnowledgeBase;
  * <p>주의: {@link #supportedFeatures()}에 선언되지 않은 기능 토글은 이 파이프라인에서 무시된다.
  * 새 기능을 추가하면 여기 목록에도 추가할 것.
  */
-@Component
+//@Component
 public class StudentRagPipeline extends AbstractRagPipeline {
 
     public StudentRagPipeline(KnowledgeBase knowledgeBase, ChatModel chatModel) {
