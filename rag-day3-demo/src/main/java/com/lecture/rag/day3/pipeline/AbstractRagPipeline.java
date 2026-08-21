@@ -103,6 +103,24 @@ public abstract class AbstractRagPipeline implements RagPipeline {
         return Optional.empty();
     }
 
+    /** 생성 모델에 전달할 시스템 프롬프트. 파이프라인별로 더 엄격한 근거 규칙을 적용할 수 있다. */
+    protected String generationSystemPrompt(RagOptions options) {
+        return options.systemPrompt() == null || options.systemPrompt().isBlank()
+                ? RagPrompts.DEFAULT_SYSTEM_PROMPT
+                : options.systemPrompt();
+    }
+
+    /** 생성 모델에 전달할 대화 기록. 검색 재작성용 기록과 답변 생성용 기록을 분리할 수 있다. */
+    protected List<Message> generationHistory(ChatRequest request, RagOptions options) {
+        return RagPrompts.historyMessages(request.historyOrEmpty(), options.maxHistoryOrDefault());
+    }
+
+    /** LLM을 호출하지 않고 확정적으로 답해야 하는 경우 사용한다. */
+    protected Optional<String> answerWithoutGeneration(String question, List<SourceRef> sources,
+            RagOptions options) {
+        return Optional.empty();
+    }
+
     // ------------------------------------------------------------------ 편의 도구
 
     /** 훅 구현에서 LLM을 부를 때 쓰는 ChatClient. */
@@ -299,11 +317,20 @@ public abstract class AbstractRagPipeline implements RagPipeline {
             String context = RagPrompts.formatContext(this.sources);
             this.contextChars = context.length();
 
-            String systemPrompt = this.options.systemPrompt() == null || this.options.systemPrompt().isBlank()
-                    ? RagPrompts.DEFAULT_SYSTEM_PROMPT
-                    : this.options.systemPrompt();
-            List<Message> history = RagPrompts.historyMessages(
-                    this.request.historyOrEmpty(), this.options.maxHistoryOrDefault());
+            Optional<String> fixedAnswer = answerWithoutGeneration(this.question, this.sources, this.options);
+            if (fixedAnswer.isPresent()) {
+                String text = fixedAnswer.get();
+                this.answer.append(text);
+                this.generateMs = System.currentTimeMillis() - t0;
+                return Flux.just(
+                        AgentEvent.metric("contextChars", "컨텍스트 길이", this.contextChars),
+                        AgentEvent.token(text),
+                        AgentEvent.stepDone(STEP_GENERATE, "근거 제한 응답", this.generateMs,
+                                "LLM 호출 없이 " + text.length() + "자 생성"));
+            }
+
+            String systemPrompt = generationSystemPrompt(this.options);
+            List<Message> history = generationHistory(this.request, this.options);
 
             Flux<AgentEvent> tokens = ChatClient.builder(AbstractRagPipeline.this.chatModel).build()
                     .prompt()

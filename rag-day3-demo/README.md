@@ -56,6 +56,7 @@ day3/
 │   ├─ AbstractRagPipeline 공통 흐름(검색→컨텍스트→스트리밍) + 확장 훅
 │   ├─ BasicRagPipeline   브론즈: 기준선 파이프라인 (그대로 동작)
 │   ├─ StudentRagPipeline ★ 실습 파일 — TODO 4개
+│   ├─ MemoryAgentPipeline 대화는 검색에만 쓰고 문서 근거로만 답하는 확장 파이프라인
 │   └─ RagPrompts         프롬프트/컨텍스트 조립
 ├─ eval/JudgeService   골드: LLM-as-judge 채점 (Day3 Lab3.1)
 └─ web/               컨트롤러 3개
