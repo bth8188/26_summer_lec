@@ -1,0 +1,18 @@
+# PGVector 프로필. Maven 프로필 -Ppgvector 로 빌드해야 스타터가 클래스패스에 들어온다.
+#   docker compose -f ../rag-day2-demo/docker-compose.yml up -d
+#   ./mvnw spring-boot:run -Ppgvector -Dspring-boot.run.profiles=pgvector
+#
+# 이 프로필에서는 DB가 인덱스를 들고 있으므로 KnowledgeBase의 파일 영속화는 저절로 꺼진다.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ragdb
+    username: postgres
+    password: postgres
+  ai:
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 1024        # bge-m3 출력 차원 — 임베딩 모델을 바꾸면 여기도 바꿔야 한다
+        initialize-schema: true
+        table-name: day3_vectors

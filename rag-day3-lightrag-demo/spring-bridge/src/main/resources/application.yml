@@ -1,0 +1,13 @@
+server:
+  port: 8090
+
+spring:
+  ai:
+    ollama:
+      # 원래는 http://localhost:11434 (Ollama). 이 한 줄만 LightRAG로 돌린다.
+      base-url: http://localhost:9621
+      init:
+        pull-model-strategy: never   # LightRAG는 모델을 pull할 수 없으므로 반드시 끈다
+      chat:
+        options:
+          model: lightrag:latest     # /api/tags 가 노출하는 시뮬레이션 모델 이름 (실측값)
