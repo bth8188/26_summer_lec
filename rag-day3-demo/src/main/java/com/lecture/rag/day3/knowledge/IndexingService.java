@@ -127,7 +127,9 @@ public class IndexingService {
         t0 = System.currentTimeMillis();
 
         List<Document> chunks = options.strategy().split(pages, options.chunkSize(), options.overlap());
-        chunks = withMetadata(chunks, docId, fileName);
+        long indexedAt = System.currentTimeMillis();
+        chunks = withMetadata(chunks, docId, fileName, pdf ? "pdf" : "text",
+                pages.size(), charCount, options, indexedAt);
 
         int avgChars = chunks.isEmpty() ? 0
                 : chunks.stream().mapToInt(chunk -> chunk.getText().length()).sum() / chunks.size();
@@ -160,15 +162,19 @@ public class IndexingService {
 
         IndexedDocument indexed = new IndexedDocument(docId, fileName, pdf ? "pdf" : "text",
                 pages.size(), chunks.size(), charCount, options.strategy().name(),
-                options.chunkSize(), options.overlap(), System.currentTimeMillis(), embedMs);
+                options.chunkSize(), options.overlap(), indexedAt, embedMs);
         this.knowledgeBase.register(indexed);
         sink.next(AgentEvent.document(indexed));
 
         return chunks.size();
     }
 
-    /** 청크마다 docId/fileName/page/chunkIndex를 심어준다 — 근거 표시와 문서별 삭제에 필요하다. */
-    private List<Document> withMetadata(List<Document> chunks, String docId, String fileName) {
+    /**
+     * 청크마다 검색·근거 표시용 정보와 문서 복원용 정보를 심는다.
+     * PGVector에는 벡터와 이 메타데이터가 함께 남으므로 서버 재시작 뒤 문서 목록도 복원할 수 있다.
+     */
+    private List<Document> withMetadata(List<Document> chunks, String docId, String fileName,
+            String type, int pageCount, int charCount, IndexOptions options, long indexedAt) {
         List<Document> result = new ArrayList<>(chunks.size());
         for (int i = 0; i < chunks.size(); i++) {
             Document chunk = chunks.get(i);
@@ -177,7 +183,14 @@ public class IndexingService {
                     .metadata(new java.util.LinkedHashMap<>(chunk.getMetadata()))
                     .metadata("docId", docId)
                     .metadata("fileName", fileName)
-                    .metadata("chunkIndex", i);
+                    .metadata("chunkIndex", i)
+                    .metadata("fileType", type)
+                    .metadata("pageCount", pageCount)
+                    .metadata("charCount", charCount)
+                    .metadata("strategy", options.strategy().name())
+                    .metadata("chunkSize", options.chunkSize())
+                    .metadata("overlap", options.overlap())
+                    .metadata("indexedAt", indexedAt);
             // PagePdfDocumentReader가 넣어준 페이지 번호를 우리 이름(page)으로 정규화
             Object pageNumber = chunk.getMetadata().get(PagePdfDocumentReader.METADATA_START_PAGE_NUMBER);
             if (pageNumber != null) {

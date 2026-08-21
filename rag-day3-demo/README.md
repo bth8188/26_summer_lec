@@ -23,6 +23,14 @@ ollama pull bge-m3
 ollama pull llama3.2:3b
 ```
 
+**PGVector 실행** (Docker Desktop 필요)
+```bash
+docker compose up -d
+```
+
+Day2 데이터와 섞이지 않도록 Day3는 `localhost:5433/ragday3`를 사용한다. 접속 정보는
+`RAG_DB_URL`, `RAG_DB_USERNAME`, `RAG_DB_PASSWORD` 환경 변수로 변경할 수 있다.
+
 ## 실행 방법
 ```bash
 ./run.sh        # macOS/Linux, 포트 8081
@@ -35,8 +43,9 @@ run.bat         :: Windows
 ## 제출본 재현
 
 이 제출에서 사용한 은행법 관련 원문 5개는 [`source-docs`](source-docs/)에 포함되어 있다.
-백엔드와 프론트엔드를 실행한 뒤 왼쪽 지식 베이스 패널에서 5개 파일을 모두 업로드한다.
+최초 실행 때 백엔드와 프론트엔드를 실행한 뒤 왼쪽 지식 베이스 패널에서 5개 파일을 모두 업로드한다.
 권장 인덱싱 설정은 `TOKEN`, 청크 크기 `400`, 오버랩 `60`이다.
+인덱싱 결과는 PGVector에 저장되므로 이후 백엔드를 재시작해도 문서와 청크가 그대로 복원된다.
 
 ## 구조
 
@@ -48,7 +57,7 @@ day3/
 │   ├─ RagOptions      topK·임계값·temperature·기능 토글
 │   └─ SourceRef       답변 근거 청크 한 개
 ├─ knowledge/     문서 인덱싱
-│   ├─ KnowledgeBase   여러 문서를 담는 VectorStore + 청크 보관소
+│   ├─ KnowledgeBase   PGVector 검색 + 재시작 시 청크/문서 목록 복원
 │   ├─ IndexingService 읽기 → 청킹 → 임베딩 (진행 상황을 이벤트로 흘려보냄)
 │   └─ ChunkingStrategy TOKEN / RECURSIVE / SLIDING (Day2 M2.1에서 만든 것들)
 ├─ pipeline/      RAG 실행
@@ -115,11 +124,8 @@ curl -N -X POST http://localhost:8081/api/chat -H 'Content-Type: application/jso
 
 ## 알아둘 것
 
-- **인덱스는 메모리에만 있다.** 백엔드를 재시작하면 문서를 다시 올려야 한다.
-  유지하고 싶으면 `SimpleVectorStore.save(File)` / `load(File)`을 붙이는 게 좋은 확장 과제다.
-- **PGVector로 바꾸려면** `pom.xml`에 `spring-ai-starter-vector-store-pgvector`를 추가하고
-  `KnowledgeBase`의 store 생성 부분만 주입받은 `VectorStore` 빈으로 교체하면 된다
-  (나머지 코드는 `VectorStore` 인터페이스에만 의존한다).
+- **인덱스는 PGVector에 저장된다.** `docker compose down`은 컨테이너만 내리므로 데이터가 유지된다.
+  볼륨까지 지우는 `docker compose down -v`를 실행하면 인덱스도 삭제되므로 주의한다.
 - **CORS**는 `application.yml`의 `app.cors.allowed-origin`(기본 `http://localhost:3000`)만 허용한다.
   프론트를 다른 포트로 띄우면 여기도 같이 바꿀 것.
 - **스캔 이미지 PDF**는 텍스트 레이어가 없어 0자로 읽힌다(경고 이벤트가 뜬다). OCR은 수업 범위 밖.

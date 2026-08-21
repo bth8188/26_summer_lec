@@ -9,6 +9,10 @@ server:
 spring:
   application:
     name: rag-day3-demo
+  datasource:
+    url: ${RAG_DB_URL:jdbc:postgresql://localhost:5433/ragday3}
+    username: ${RAG_DB_USERNAME:postgres}
+    password: ${RAG_DB_PASSWORD:postgres}
   servlet:
     multipart:
       max-file-size: 30MB
@@ -17,6 +21,12 @@ spring:
     async:
       request-timeout: 600000  # 10분 — 청크가 많은 PDF 인덱싱/느린 rerank 도중 스트림이 끊기지 않게
   ai:
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 1024  # bge-m3 임베딩 차원과 반드시 같아야 한다
+        initialize-schema: true
     ollama:
       base-url: http://localhost:11434
       embedding:

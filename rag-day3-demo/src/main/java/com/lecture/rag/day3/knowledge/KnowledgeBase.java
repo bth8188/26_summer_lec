@@ -2,16 +2,22 @@ package com.lecture.rag.day3.knowledge;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import jakarta.annotation.PostConstruct;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,14 +27,8 @@ import org.springframework.stereotype.Component;
  * 캡스톤은 여러 문서를 동시에 얹고 문서별로 지우는 게 가능해야 하므로, VectorStore 하나를 계속 쓰면서
  * 어떤 청크가 어떤 문서 소속인지 {@code docId} 메타데이터로 관리한다.
  *
- * <p><b>메모리에만 저장된다</b> — 백엔드를 재시작하면 인덱스는 사라진다.
- * 유지하고 싶으면 {@link SimpleVectorStore#save(java.io.File)} / {@code load(File)}를 써서
- * 기동 시 불러오도록 고쳐보는 게 좋은 확장 과제다.
- *
- * <p><b>PGVector로 바꾸고 싶다면</b>(Day2에서 쓴 것): pom.xml에
- * {@code spring-ai-starter-vector-store-pgvector}를 추가하고 이 클래스의 {@code store} 초기화를
- * 주입받은 {@code VectorStore} 빈으로 바꾸면 된다. 나머지 코드는 그대로 동작한다 —
- * {@code VectorStore} 인터페이스에만 의존하도록 짜여 있기 때문이다.
+ * <p>벡터와 메타데이터는 PGVector에 영속화한다. 하이브리드 키워드 검색에 필요한 전체 청크는
+ * 메모리에도 보관하되, 서버 시작 시 {@code vector_store} 테이블에서 다시 읽어 복원한다.
  */
 @Component
 public class KnowledgeBase {
@@ -36,7 +36,9 @@ public class KnowledgeBase {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeBase.class);
 
     private final EmbeddingModel embeddingModel;
-    private final SimpleVectorStore store;
+    private final VectorStore store;
+    private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
 
     /** docId -> 문서 메타. 업로드 순서를 유지하려고 LinkedHashMap. */
     private final Map<String, IndexedDocument> documents = new LinkedHashMap<>();
@@ -47,9 +49,33 @@ public class KnowledgeBase {
      */
     private final Map<String, List<Document>> chunksByDoc = new LinkedHashMap<>();
 
-    public KnowledgeBase(EmbeddingModel embeddingModel) {
+    public KnowledgeBase(EmbeddingModel embeddingModel, VectorStore store,
+            JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.embeddingModel = embeddingModel;
-        this.store = SimpleVectorStore.builder(embeddingModel).build();
+        this.store = store;
+        this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
+    }
+
+    /** PGVector에 남아 있는 청크를 읽어 문서 목록과 키워드 검색용 메모리를 복원한다. */
+    @PostConstruct
+    synchronized void restoreFromPgVector() {
+        List<Document> restored = this.jdbcTemplate.query(
+                "SELECT id::text, content, metadata::text FROM vector_store",
+                (rs, rowNum) -> restoreDocument(rs.getString(1), rs.getString(2), rs.getString(3)));
+
+        restored.sort(Comparator
+                .comparing((Document chunk) -> stringMetadata(chunk, "docId", ""))
+                .thenComparingInt(chunk -> intMetadata(chunk, "chunkIndex", 0)));
+
+        for (Document chunk : restored) {
+            String docId = stringMetadata(chunk, "docId", "");
+            if (!docId.isBlank()) {
+                this.chunksByDoc.computeIfAbsent(docId, key -> new ArrayList<>()).add(chunk);
+            }
+        }
+        this.chunksByDoc.forEach((docId, chunks) -> this.documents.put(docId, restoredDocument(docId, chunks)));
+        log.info("PGVector에서 문서 {}개, 청크 {}개를 복원했습니다", this.documents.size(), restored.size());
     }
 
     public EmbeddingModel embeddingModel() {
@@ -141,5 +167,50 @@ public class KnowledgeBase {
         this.documents.clear();
         this.chunksByDoc.clear();
         log.info("지식 베이스를 비웠습니다 (청크 {}개 삭제)", ids.size());
+    }
+
+    private Document restoreDocument(String id, String text, String metadataJson) {
+        try {
+            Map<String, Object> metadata = this.objectMapper.readValue(
+                    metadataJson, new TypeReference<Map<String, Object>>() { });
+            return Document.builder().id(id).text(text).metadata(metadata).build();
+        }
+        catch (Exception exception) {
+            throw new IllegalStateException("PGVector 청크 메타데이터를 읽지 못했습니다: " + id, exception);
+        }
+    }
+
+    private static IndexedDocument restoredDocument(String docId, List<Document> chunks) {
+        Document first = chunks.getFirst();
+        String fileName = stringMetadata(first, "fileName", "unknown");
+        int inferredPages = chunks.stream().mapToInt(chunk -> intMetadata(chunk, "page", 0)).max().orElse(0) + 1;
+        int inferredChars = chunks.stream().mapToInt(chunk -> chunk.getText().length()).sum();
+        return new IndexedDocument(
+                docId,
+                fileName,
+                stringMetadata(first, "fileType", fileName.toLowerCase().endsWith(".pdf") ? "pdf" : "text"),
+                intMetadata(first, "pageCount", Math.max(1, inferredPages)),
+                chunks.size(),
+                intMetadata(first, "charCount", inferredChars),
+                stringMetadata(first, "strategy", "PERSISTED"),
+                intMetadata(first, "chunkSize", 0),
+                intMetadata(first, "overlap", 0),
+                longMetadata(first, "indexedAt", 0L),
+                0L);
+    }
+
+    private static String stringMetadata(Document document, String key, String fallback) {
+        Object value = document.getMetadata().get(key);
+        return value == null ? fallback : value.toString();
+    }
+
+    private static int intMetadata(Document document, String key, int fallback) {
+        Object value = document.getMetadata().get(key);
+        return value instanceof Number number ? number.intValue() : fallback;
+    }
+
+    private static long longMetadata(Document document, String key, long fallback) {
+        Object value = document.getMetadata().get(key);
+        return value instanceof Number number ? number.longValue() : fallback;
     }
 }
