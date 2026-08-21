@@ -1,7 +1,10 @@
 package com.lecture.rag.day3.pipeline;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.document.Document;
@@ -93,8 +96,34 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     @Override
     protected Optional<List<String>> rewriteQueries(String question, List<ChatRequest.Turn> history,
             RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        if (question == null || question.isBlank()) {
+            return Optional.empty();
+        }
+        String historyText = RagPrompts.historyAsText(history, options.maxHistoryOrDefault());
+        String prompt = """
+                이전 대화:
+                %s
+
+                마지막 질문: %s
+
+                위 대화의 마지막 질문을 문서 검색에 쓸 수 있게 완전한 문장으로 바꿔 쓰세요.
+                서로 표현이 다른 3개를 줄바꿈으로만 구분해서 출력하고, 번호나 설명은 붙이지 마세요.
+                """.formatted(historyText.isBlank() ? "(없음)" : historyText, question);
+
+        String response = chatClient().prompt().user(prompt).call().content();
+        if (response == null || response.isBlank()) {
+            return Optional.empty();
+        }
+
+        List<String> rewritten = new ArrayList<>();
+        rewritten.add(question);
+        for (String line : response.split("\n")) {
+            String trimmed = line.strip();
+            if (!trimmed.isEmpty() && !rewritten.contains(trimmed)) {
+                rewritten.add(trimmed);
+            }
+        }
+        return Optional.of(rewritten);
     }
 
     // =================================================================== 실버 ②
@@ -121,8 +150,51 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      */
     @Override
     protected Optional<List<Document>> keywordSearch(String query, List<String> docIds, RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        if (query == null || query.isBlank()) {
+            return Optional.empty();
+        }
+        List<String> words = new ArrayList<>();
+        for (String word : query.split("\\s+")) {
+            String lower = word.toLowerCase();
+            if (lower.length() >= 2 && !words.contains(lower)) {
+                words.add(lower);
+            }
+        }
+        if (words.isEmpty()) {
+            return Optional.empty();
+        }
+
+        List<Document> chunks = knowledgeBase.chunksOf(docIds);
+        List<Document> scored = new ArrayList<>();
+        List<Integer> scores = new ArrayList<>();
+        for (Document chunk : chunks) {
+            String text = chunk.getText() == null ? "" : chunk.getText().toLowerCase();
+            int score = 0;
+            for (String word : words) {
+                int idx = 0;
+                while ((idx = text.indexOf(word, idx)) >= 0) {
+                    score++;
+                    idx += word.length();
+                }
+            }
+            if (score > 0) {
+                scored.add(chunk);
+                scores.add(score);
+            }
+        }
+
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < scored.size(); i++) {
+            order.add(i);
+        }
+        order.sort((a, b) -> scores.get(b) - scores.get(a));
+
+        int topK = options.topKOrDefault();
+        List<Document> result = new ArrayList<>();
+        for (int i = 0; i < order.size() && result.size() < topK; i++) {
+            result.add(scored.get(order.get(i)));
+        }
+        return Optional.of(result);
     }
 
     // =================================================================== 실버 ③
@@ -149,8 +221,45 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      */
     @Override
     protected Optional<List<Document>> rerank(String query, List<Document> candidates, RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        if (candidates == null || candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        List<Document> scoredDocs = new ArrayList<>();
+        List<Integer> scores = new ArrayList<>();
+        for (Document candidate : candidates) {
+            scoredDocs.add(candidate);
+            scores.add(scoreCandidate(query, candidate));
+        }
+
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < scoredDocs.size(); i++) {
+            order.add(i);
+        }
+        order.sort((a, b) -> scores.get(b) - scores.get(a));
+
+        int topK = options.topKOrDefault();
+        List<Document> result = new ArrayList<>();
+        for (int i = 0; i < order.size() && result.size() < topK; i++) {
+            result.add(scoredDocs.get(order.get(i)));
+        }
+        return Optional.of(result);
+    }
+
+    private static final Pattern FIRST_NUMBER = Pattern.compile("\\d+");
+
+    private int scoreCandidate(String query, Document candidate) {
+        String prompt = """
+                질문: %s
+                문서: %s
+                이 문서가 질문에 답하는 데 얼마나 관련 있는지 0~10 사이 숫자 하나만 답하세요. 설명은 하지 마세요.
+                """.formatted(query, candidate.getText());
+        String response = chatClient().prompt().user(prompt).call().content();
+        if (response == null) {
+            return 0;
+        }
+        Matcher matcher = FIRST_NUMBER.matcher(response.trim());
+        return matcher.find() ? Math.min(10, Integer.parseInt(matcher.group())) : 0;
     }
 
     // =================================================================== 골드
@@ -178,7 +287,25 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     @Override
     protected Optional<String> selfCheck(String question, String answer, List<SourceRef> sources,
             RagOptions options) {
-        // TODO(골드): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        if (answer == null || answer.isBlank()) {
+            return Optional.empty();
+        }
+        String context = RagPrompts.formatContext(sources);
+        String prompt = """
+                [근거]
+                %s
+
+                [답변]
+                %s
+
+                답변의 모든 문장이 근거에 실제로 있는 내용인지 판정하세요.
+                형식: '통과' 또는 '주의: <근거에 없는 내용 요약>' 한 줄로만.
+                """.formatted(context, answer);
+
+        String response = chatClient().prompt().user(prompt).call().content();
+        if (response == null || response.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(response.strip());
     }
 }
