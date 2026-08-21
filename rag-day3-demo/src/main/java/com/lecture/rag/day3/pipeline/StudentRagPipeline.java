@@ -1,8 +1,15 @@
 package com.lecture.rag.day3.pipeline;
 
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
@@ -36,6 +43,19 @@ import com.lecture.rag.day3.knowledge.KnowledgeBase;
  */
 @Component
 public class StudentRagPipeline extends AbstractRagPipeline {
+
+    private static final Pattern ARTICLE_REFERENCE =
+            Pattern.compile("제\\s*\\d+조(?:의\\s*\\d+)?(?:\\s*제\\s*\\d+항)?");
+    private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}]+");
+
+    private static final Set<String> STOP_WORDS = Set.of(
+            "무엇", "무엇인가요", "어떻게", "알려주세요", "설명해주세요", "정한", "따른",
+            "관련", "경우", "대한", "있는", "없는", "그리고", "또는", "해당");
+
+    private static final List<String> KOREAN_PARTICLES = List.of(
+            "으로부터", "에서부터", "에게서", "에서는", "으로는", "이라고", "이라는",
+            "에서", "에게", "으로", "에는", "까지", "부터", "보다", "처럼", "하고",
+            "이며", "라고", "의", "을", "를", "이", "가", "은", "는", "에", "와", "과", "도", "만");
 
     public StudentRagPipeline(KnowledgeBase knowledgeBase, ChatModel chatModel) {
         super(knowledgeBase, chatModel);
@@ -158,8 +178,40 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      */
     @Override
     protected Optional<List<Document>> keywordSearch(String query, List<String> docIds, RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        List<String> articleReferences = extractArticleReferences(query);
+        List<String> keywords = extractKeywords(query);
+        List<Document> allChunks = this.knowledgeBase.chunksOf(docIds);
+
+        List<ScoredDocument> scored = new ArrayList<>();
+        int originalIndex = 0;
+        for (Document document : allChunks) {
+            int score = keywordScore(document, query, articleReferences, keywords);
+            if (score > 0) {
+                scored.add(new ScoredDocument(document, score, originalIndex));
+            }
+            originalIndex++;
+        }
+
+        List<ScoredDocument> ranked = scored.stream()
+                .sorted(Comparator.comparingInt(ScoredDocument::score).reversed()
+                        .thenComparingInt(ScoredDocument::originalIndex))
+                .toList();
+
+        LinkedHashSet<Document> hits = new LinkedHashSet<>();
+        for (ScoredDocument hit : ranked) {
+            Document document = hit.document();
+            if (!articleReferences.isEmpty() && containsAnyArticle(document, articleReferences)) {
+                Document articleChunk = document;
+                document = adjacentChunk(allChunks, document, 1)
+                        .map(adjacent -> mergeChunks(articleChunk, adjacent))
+                        .orElse(document);
+            }
+            hits.add(document);
+            if (hits.size() >= options.topKOrDefault()) {
+                break;
+            }
+        }
+        return Optional.of(hits.stream().limit(options.topKOrDefault()).toList());
     }
 
     // =================================================================== 실버 ③
@@ -219,10 +271,153 @@ public class StudentRagPipeline extends AbstractRagPipeline {
         return Optional.empty();
     }
 
+    private static int keywordScore(Document document, String query, List<String> articleReferences,
+            List<String> keywords) {
+        String text = normalize(document.getText());
+        String fileName = normalize(metadataText(document, "fileName"));
+        String normalizedQuery = normalize(query);
+        int score = 0;
+
+        for (String reference : articleReferences) {
+            if (text.contains(reference)) {
+                score += 1_000;
+            }
+        }
+        for (String keyword : keywords) {
+            int occurrences = countOccurrences(text, keyword);
+            score += occurrences * (keyword.length() >= 4 ? 4 : 2);
+            if (fileName.contains(keyword)) {
+                score += 5;
+            }
+        }
+
+        if (score == 0) {
+            return 0;
+        }
+
+        boolean asksProposal = normalizedQuery.contains("입법예고") || normalizedQuery.contains("예고안");
+        boolean asksAmendment = normalizedQuery.contains("개정이유") || normalizedQuery.contains("개정문");
+        if (asksProposal) {
+            score += fileName.contains("입법예고") ? 40 : 0;
+        }
+        else if (asksAmendment) {
+            score += fileName.contains("개정문") || fileName.contains("개정이유") ? 40 : 0;
+        }
+        else {
+            score += authorityBoost(fileName);
+        }
+        return score;
+    }
+
+    private static int authorityBoost(String fileName) {
+        if (fileName.contains("현행법률")) {
+            return 300;
+        }
+        if (fileName.contains("현행시행령")) {
+            return 250;
+        }
+        if (fileName.contains("개정문") || fileName.contains("개정이유")) {
+            return 150;
+        }
+        if (fileName.contains("시행안내")) {
+            return 80;
+        }
+        if (fileName.contains("입법예고")) {
+            return 20;
+        }
+        return 0;
+    }
+
+    private static boolean containsAnyArticle(Document document, List<String> articleReferences) {
+        String text = normalize(document.getText());
+        return articleReferences.stream().anyMatch(text::contains);
+    }
+
+    private static Optional<Document> adjacentChunk(List<Document> allChunks, Document document, int offset) {
+        String docId = metadataText(document, "docId");
+        Object indexValue = document.getMetadata().get("chunkIndex");
+        if (!(indexValue instanceof Number index)) {
+            return Optional.empty();
+        }
+        int targetIndex = index.intValue() + offset;
+        return allChunks.stream()
+                .filter(candidate -> docId.equals(metadataText(candidate, "docId")))
+                .filter(candidate -> {
+                    Object candidateIndex = candidate.getMetadata().get("chunkIndex");
+                    return candidateIndex instanceof Number number && number.intValue() == targetIndex;
+                })
+                .findFirst();
+    }
+
+    private static Document mergeChunks(Document first, Document adjacent) {
+        return Document.builder()
+                .id(first.getId())
+                .text(first.getText() + "\n" + adjacent.getText())
+                .metadata(new java.util.LinkedHashMap<>(first.getMetadata()))
+                .build();
+    }
+
+    private static List<String> extractArticleReferences(String query) {
+        LinkedHashSet<String> references = new LinkedHashSet<>();
+        Matcher matcher = ARTICLE_REFERENCE.matcher(query == null ? "" : query);
+        while (matcher.find()) {
+            references.add(normalize(matcher.group()));
+        }
+        return List.copyOf(references);
+    }
+
+    private static List<String> extractKeywords(String query) {
+        LinkedHashSet<String> keywords = new LinkedHashSet<>();
+        Matcher matcher = WORD.matcher(query == null ? "" : query.toLowerCase(Locale.ROOT));
+        while (matcher.find()) {
+            String word = stripKoreanParticle(matcher.group());
+            if (word.length() >= 2 && !STOP_WORDS.contains(word)) {
+                keywords.add(word);
+            }
+        }
+        return List.copyOf(keywords);
+    }
+
+    private static String stripKoreanParticle(String word) {
+        for (String particle : KOREAN_PARTICLES) {
+            if (word.endsWith(particle) && word.length() - particle.length() >= 2) {
+                return word.substring(0, word.length() - particle.length());
+            }
+        }
+        return word;
+    }
+
+    private static int countOccurrences(String text, String keyword) {
+        int count = 0;
+        int from = 0;
+        while ((from = text.indexOf(keyword, from)) >= 0) {
+            count++;
+            from += keyword.length();
+        }
+        return count;
+    }
+
     private static String cleanQueryLine(String line) {
         return line == null ? "" : line
                 .replaceFirst("^\\s*(?:[-*•]|\\d+[.)])\\s*", "")
                 .replaceAll("^[\\\"'“”]+|[\\\"'“”]+$", "")
                 .strip();
+    }
+
+    private static String metadataText(Document document, String key) {
+        Object value = document.getMetadata().get(key);
+        return value == null ? "" : value.toString();
+    }
+
+    private static String normalize(String text) {
+        if (text == null) {
+            return "";
+        }
+        return Normalizer.normalize(text, Normalizer.Form.NFC)
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("\\s+", "");
+    }
+
+    private record ScoredDocument(Document document, int score, int originalIndex) {
     }
 }

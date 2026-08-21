@@ -1,7 +1,10 @@
 package com.lecture.rag.day3.pipeline;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -129,5 +132,34 @@ public final class RagPrompts {
             }
         }
         return merged;
+    }
+
+    /** 여러 검색기의 순위를 Reciprocal Rank Fusion으로 합친다. */
+    public static List<Document> reciprocalRankFusion(List<List<Document>> results) {
+        Map<String, FusedDocument> fused = new LinkedHashMap<>();
+        int firstSeen = 0;
+        for (List<Document> result : results) {
+            for (int rank = 0; rank < result.size(); rank++) {
+                Document document = result.get(rank);
+                String key = document.getId() != null ? document.getId() : document.getText();
+                FusedDocument current = fused.get(key);
+                double increment = 1.0 / (60 + rank + 1);
+                if (current == null) {
+                    fused.put(key, new FusedDocument(document, increment, firstSeen++));
+                }
+                else {
+                    fused.put(key, new FusedDocument(current.document(), current.score() + increment,
+                            current.firstSeen()));
+                }
+            }
+        }
+        return fused.values().stream()
+                .sorted(Comparator.comparingDouble(FusedDocument::score).reversed()
+                        .thenComparingInt(FusedDocument::firstSeen))
+                .map(FusedDocument::document)
+                .toList();
+    }
+
+    private record FusedDocument(Document document, double score, int firstSeen) {
     }
 }

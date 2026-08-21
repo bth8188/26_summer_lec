@@ -210,7 +210,9 @@ public abstract class AbstractRagPipeline implements RagPipeline {
                 perQuery.add(AbstractRagPipeline.this.knowledgeBase.search(
                         query, searchTopK, threshold, this.request.docIdsOrEmpty()));
             }
-            this.candidates = RagPrompts.mergeDistinct(perQuery);
+            this.candidates = perQuery.size() == 1
+                    ? perQuery.get(0)
+                    : RagPrompts.reciprocalRankFusion(perQuery);
             this.retrieveMs = System.currentTimeMillis() - t0;
 
             String detail = this.candidates.size() + "개 청크"
@@ -235,7 +237,8 @@ public abstract class AbstractRagPipeline implements RagPipeline {
                 }
                 else {
                     int before = this.candidates.size();
-                    this.candidates = RagPrompts.mergeDistinct(List.of(this.candidates, keywordHits.get()));
+                    this.candidates = RagPrompts.reciprocalRankFusion(
+                            List.of(keywordHits.get(), this.candidates));
                     events.add(AgentEvent.stepDone(STEP_KEYWORD, "키워드 검색 (하이브리드)",
                             System.currentTimeMillis() - k0,
                             "키워드로 " + keywordHits.get().size() + "개 추가 → 후보 " + before + "개에서 "
