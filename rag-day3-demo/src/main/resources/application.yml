@@ -1,0 +1,46 @@
+server:
+  port: 8081   # day1/day2(8080)와 동시에 띄울 수 있게 포트를 분리
+  # 스트리밍(NDJSON) 응답이 오래 걸릴 수 있어(재정렬 켜면 LLM을 여러 번 호출) 비동기 타임아웃을 넉넉히
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+spring:
+  application:
+    name: rag-day3-demo
+  datasource:
+    url: ${RAG_DB_URL:jdbc:postgresql://localhost:5433/ragday3}
+    username: ${RAG_DB_USERNAME:postgres}
+    password: ${RAG_DB_PASSWORD:postgres}
+  servlet:
+    multipart:
+      max-file-size: 30MB
+      max-request-size: 60MB   # 파일 여러 개를 한 번에 올릴 수 있어 요청 전체 한도를 더 크게
+  mvc:
+    async:
+      request-timeout: 600000  # 10분 — 청크가 많은 PDF 인덱싱/느린 rerank 도중 스트림이 끊기지 않게
+  ai:
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 1024  # bge-m3 임베딩 차원과 반드시 같아야 한다
+        initialize-schema: true
+    ollama:
+      base-url: http://localhost:11434
+      embedding:
+        options:
+          model: bge-m3   # 실측 결과 nomic-embed-text는 한국어 의미 구분에 실패함 — 반드시 bge-m3 사용
+      chat:
+        options:
+          model: llama3.2:3b
+
+# Next.js 프론트(기본 localhost:3000)에서 이 API를 fetch로 직접 호출하기 위한 CORS 허용 origin
+app:
+  cors:
+    allowed-origin: http://localhost:3000
+
+logging:
+  level:
+    com.lecture.rag.day3: DEBUG
