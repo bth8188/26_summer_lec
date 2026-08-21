@@ -13,15 +13,28 @@ docker compose up -d        # PGVector (Lab2.1부터 필요)
 ```
 
 ## 실행 방법
-프로필 이름을 몰라도 되게 `run.sh` 래퍼 스크립트로 실행한다.
+프로필 이름을 몰라도 되게 `run.sh`(macOS/Linux) / `run.bat`(Windows) 래퍼 스크립트로 실행한다.
 
 ```bash
+# macOS / Linux
 ./run.sh chunking-strategies   # M2.1 청킹 기법 4종(Fixed/Recursive/구조기반/Sliding Window/Semantic) 비교
+./run.sh mmr                   # M2.3 — MMR: 순수 Top-K vs MMR(다양성 확보) 비교
 ./run.sh lab21                 # Lab2.1 — PGVector 인덱싱 (docker compose up -d 먼저 실행할 것)
 ./run.sh lab22                 # Lab2.2/M2.4 — LLM 기반 리랭크 데모
+./run.sh query-transform       # M2.5 — QueryTransformer: 질문 재작성 단독 + Transform/Retrieve/Rerank 파이프라인 비교
 ./run.sh lab23                 # Lab2.4 — RAG를 도구로 쓰기(Agentic RAG) vs 프롬프트 바인딩형 비교
 ```
-(원한다면 `./mvnw spring-boot:run -Dspring-boot.run.profiles=<이름>`으로 직접 실행해도 동일하게 동작함 — `run.sh`는 그 명령을 대신 기억해주는 것뿐)
+
+```bat
+:: Windows (cmd 또는 PowerShell)
+run.bat chunking-strategies
+run.bat mmr
+run.bat lab21
+run.bat lab22
+run.bat query-transform
+run.bat lab23
+```
+(원한다면 `mvnw spring-boot:run -Dspring-boot.run.profiles=<이름>`으로 직접 실행해도 동일하게 동작함 — `run.sh`/`run.bat`은 그 명령을 대신 기억해주는 것뿐. Windows에서는 `mvnw.cmd`)
 
 ## 학생 실습(Lab2.0~2.4)과의 관계
 이 프로젝트의 코드는 **강사가 매뉴얼/이용약관/제주도/김치 문서로 미리 시연한 참고 구현**이다. 학생들은 각자 Lab2.0에서 고른 시나리오 문서로 이 코드를 스터디하고 문서 경로만 자기 시나리오로 바꿔 실행한다 — 특히 `lab21m1` 패키지(청킹 기법 4종)와 `lab23`(Agentic RAG)은 `RAG_day2_slides.md`의 챌린지 슬라이드에서 직접 참고하도록 안내되어 있다.
@@ -36,9 +49,13 @@ com.lecture.rag
 │   ├── SemanticChunker.java
 │   ├── SlidingWindowSplitter.java
 │   └── StructureBasedSplitter.java
+├── m23mmr/                                 — M2.3 MMR(Maximal Marginal Relevance) 참고 구현
+│   └── MmrSearchDemo.java                 (@Profile("mmr"))
 ├── lab22/                                  — M2.4 Re-ranking 참고 구현
 │   ├── LlmReranker.java
 │   └── RerankDemo.java                    (@Profile("lab22"))
+├── m25query/                               — M2.5 Query Transformation 참고 구현 (lab22의 LlmReranker 재사용)
+│   └── QueryTransformDemo.java            (@Profile("query-transform"))
 └── lab23/                                  — Lab2.4 Agentic RAG 참고 구현
     ├── DocumentSearchTool.java
     └── RagAsToolDemo.java                 (@Profile("lab23"))

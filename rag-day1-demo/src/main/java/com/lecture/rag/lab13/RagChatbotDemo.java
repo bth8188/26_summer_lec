@@ -10,9 +10,11 @@ import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -33,13 +35,16 @@ public class RagChatbotDemo implements CommandLineRunner {
 
     private final ChatModel chatModel;
     private final EmbeddingModel embeddingModel;
+    private final JdbcTemplate jdbcTemplate;
     private final String documentPath;
 
     public RagChatbotDemo(ChatModel chatModel,
                            EmbeddingModel embeddingModel,
+                           JdbcTemplate jdbcTemplate,
                            @Value("${rag.demo.document-path}") String documentPath) {
         this.chatModel = chatModel;
         this.embeddingModel = embeddingModel;
+        this.jdbcTemplate = jdbcTemplate;
         this.documentPath = documentPath;
     }
 
@@ -83,5 +88,19 @@ public class RagChatbotDemo implements CommandLineRunner {
         VectorStore vectorStore = SimpleVectorStore.builder(embeddingModel).build();
         vectorStore.add(chunks);
         return vectorStore;
+    }
+
+    /**
+     * Day2/Lab2.1에서 쓰는 PgVectorStore를 오토컨피그(application.yml)가 아니라 코드에서 직접 Bean처럼 만드는 예시.
+     * buildVectorStore()와 인터페이스(VectorStore) 사용법은 동일 — 구현체만 바뀐다는 걸 보여주기 위한 참고용 메서드.
+     * 실행하려면 PGVector가 localhost:5432/ragdb로 떠 있어야 함 (rag-day2-demo/docker-compose.yml 참고).
+     */
+    private VectorStore buildPgVectorStore() {
+        return PgVectorStore.builder(jdbcTemplate, embeddingModel)
+                .dimensions(1024)   // bge-m3 기준
+                .distanceType(PgVectorStore.PgDistanceType.COSINE_DISTANCE)
+                .indexType(PgVectorStore.PgIndexType.HNSW)
+                .initializeSchema(true)
+                .build();
     }
 }

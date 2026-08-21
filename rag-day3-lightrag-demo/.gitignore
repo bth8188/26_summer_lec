@@ -1,0 +1,15 @@
+# LightRAG 런타임 산출물
+rag_storage/
+server.log
+lightrag.log
+spring-bridge/target/
+
+# inputs/ 는 실행 시 source-docs/ 에서 복사되고, 색인 후 __parsed__/ 로 이동된다.
+# 원본은 항상 source-docs/ 가 정본이므로 inputs/ 전체를 추적하지 않는다.
+inputs/
+
+# 학생이 .env.example 을 복사해서 쓴다
+.env
+
+# 강의용으로 의도적으로 보존하는 실패 로그는 예외
+!logs/llama3.2-3b-extract-failure.log

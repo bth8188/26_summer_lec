@@ -11,9 +11,10 @@ ollama pull llama3.2:3b     # LLM (8GB 노트북 기준. 16GB+면 qwen2.5:7b 등
 ```
 
 ## 실행 방법
-프로필 이름을 몰라도 되게 `run.sh` 래퍼 스크립트로 실행한다 (내부적으로 `RagDay1DemoApplication`의 `@Profile`을 골라서 켜줌).
+프로필 이름을 몰라도 되게 `run.sh`(macOS/Linux) / `run.bat`(Windows) 래퍼 스크립트로 실행한다 (내부적으로 `RagDay1DemoApplication`의 `@Profile`을 골라서 켜줌).
 
 ```bash
+# macOS / Linux
 ./run.sh live-demo             # M1.1 라이브 데모 — Swagger UI(브라우저), 강의 라이브용 추천
 ./run.sh lab11                 # 임베딩 유사도 실습
 ./run.sh lab12                 # 인덱싱 파이프라인 실습
@@ -21,10 +22,20 @@ ollama pull llama3.2:3b     # LLM (8GB 노트북 기준. 16GB+면 qwen2.5:7b 등
 ./run.sh hallucination-console # M1.1 할루시네이션 재현 (콘솔 버전, Swagger 대신 쓰고 싶을 때)
 ./run.sh compare-console       # M1.1 순수 LLM vs RAG 비교 (콘솔 버전)
 ```
-(원한다면 `./mvnw spring-boot:run -Dspring-boot.run.profiles=<이름>`으로 직접 실행해도 동일하게 동작함 — `run.sh`는 그 명령을 대신 기억해주는 것뿐)
+
+```bat
+:: Windows (cmd 또는 PowerShell)
+run.bat live-demo
+run.bat lab11
+run.bat lab12
+run.bat lab13
+run.bat hallucination-console
+run.bat compare-console
+```
+(원한다면 `mvnw spring-boot:run -Dspring-boot.run.profiles=<이름>`으로 직접 실행해도 동일하게 동작함 — `run.sh`/`run.bat`은 그 명령을 대신 기억해주는 것뿐. Windows에서는 `mvnw.cmd`)
 
 ## Swagger로 라이브 데모하기 (강의 중 추천 방식)
-콘솔보다 훨씬 보기 좋고, 그 자리에서 질문을 바꿔가며 보여줄 수 있음. `./run.sh live-demo`로 띄운 뒤 브라우저에서:
+콘솔보다 훨씬 보기 좋고, 그 자리에서 질문을 바꿔가며 보여줄 수 있음. `./run.sh live-demo`(Windows는 `run.bat live-demo`)로 띄운 뒤 브라우저에서:
 ```
 http://localhost:8080/swagger-ui/index.html
 ```
