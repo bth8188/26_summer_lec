@@ -11,8 +11,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Component;
 
@@ -74,12 +74,12 @@ public class StudentRagPipeline extends AbstractRagPipeline {
 
     @Override
     public String tier() {
-        return "silver";
+        return "gold";
     }
 
     @Override
     public String description() {
-        return "StudentRagPipeline.java의 TODO를 채워서 만드는 나만의 파이프라인.";
+        return "질문 재작성, 하이브리드 검색, 재정렬, 자기 검증을 적용한 법령 RAG 파이프라인.";
     }
 
     @Override
@@ -282,8 +282,36 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     @Override
     protected Optional<String> selfCheck(String question, String answer, List<SourceRef> sources,
             RagOptions options) {
-        // TODO(골드): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        if (sources.isEmpty()) {
+            return Optional.of("주의: 답변을 검증할 근거 문서가 없습니다.");
+        }
+
+        String prompt = """
+                당신은 문서 기반 답변의 근거 충실도를 검사하는 검증기입니다.
+
+                [질문]
+                %s
+
+                [근거]
+                %s
+
+                [답변]
+                %s
+
+                답변의 사실 주장, 날짜, 수치, 적용 대상이 근거에 명시되어 있는지 검사하세요.
+                일부만 맞거나 근거보다 범위를 넓혀 말한 경우에도 주의로 판정합니다.
+                질문이 항목 전체, 이유, 적용 범위 등을 요구했다면 답변이 그 요구를 빠짐없이 충족하는지도 검사하세요.
+                출력은 반드시 다음 중 한 형식의 한 줄만 사용하세요.
+                통과
+                주의: <근거가 부족하거나 불일치하는 내용을 짧게 설명>
+                """.formatted(question, RagPrompts.formatContext(sources), answer);
+
+        String response = chatClient().prompt()
+                .options(ChatOptions.builder().temperature(0.0))
+                .user(prompt)
+                .call()
+                .content();
+        return Optional.of(normalizeVerdict(response));
     }
 
     private int scoreForRerank(String query, Document document) {
@@ -446,6 +474,25 @@ public class StudentRagPipeline extends AbstractRagPipeline {
                 .replaceFirst("^\\s*(?:[-*•]|\\d+[.)])\\s*", "")
                 .replaceAll("^[\\\"'“”]+|[\\\"'“”]+$", "")
                 .strip();
+    }
+
+    private static String normalizeVerdict(String response) {
+        String compact = response == null ? "" : response.replaceAll("\\s+", " ").strip();
+        if (compact.contains("주의")) {
+            String detail = compact.substring(compact.indexOf("주의")).replaceFirst("^주의\\s*:?\\s*", "");
+            return "주의: " + abbreviate(detail, 220);
+        }
+        if (compact.contains("통과")) {
+            return "통과";
+        }
+        return "주의: 검증 모델의 응답 형식이 올바르지 않습니다 - " + abbreviate(compact, 160);
+    }
+
+    private static String abbreviate(String text, int maxLength) {
+        if (text == null || text.isBlank()) {
+            return "구체적인 사유를 생성하지 못했습니다.";
+        }
+        return text.length() <= maxLength ? text : text.substring(0, maxLength) + "…";
     }
 
     private static String metadataText(Document document, String key) {

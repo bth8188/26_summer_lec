@@ -359,10 +359,11 @@ public abstract class AbstractRagPipeline implements RagPipeline {
                                     "답변의 각 문장이 근거 청크에 실제로 있는지 LLM에게 물어보고, 없으면 경고를 띄우세요(Self-RAG의 축소판).",
                                     "StudentRagPipeline#selfCheck"));
                         }
+                        String noticeLevel = verdict.get().startsWith("주의") ? "warn" : "info";
                         return Flux.just(
                                 AgentEvent.stepDone(STEP_VERIFY, "자기 검증",
                                         System.currentTimeMillis() - t0, verdict.get()),
-                                AgentEvent.notice("info", "자기 검증: " + verdict.get()));
+                                AgentEvent.notice(noticeLevel, "자기 검증: " + verdict.get()));
                     }));
         }
 
