@@ -13,17 +13,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RAG 특강 Day3 캡스톤 챗봇",
-  description: "PDF를 업로드해서 인덱싱하고, 그 문서 기반으로 스트리밍 응답을 받는 캡스톤 데모",
+  title: "RAG 에이전트 콘솔 — Day3 캡스톤",
+  description:
+    "문서를 인덱싱하고 질문하면서 검색 근거·파이프라인 단계·지표를 눈으로 확인하는 RAG 작업 콘솔",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="ko"
+      data-theme="dark"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="h-full">{children}</body>
     </html>
   );
 }

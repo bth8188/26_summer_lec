@@ -1,13 +1,21 @@
 server:
   port: 8081   # day1/day2(8080)와 동시에 띄울 수 있게 포트를 분리
+  # 스트리밍(NDJSON) 응답이 오래 걸릴 수 있어(재정렬 켜면 LLM을 여러 번 호출) 비동기 타임아웃을 넉넉히
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
 
 spring:
   application:
     name: rag-day3-demo
   servlet:
     multipart:
-      max-file-size: 20MB
-      max-request-size: 20MB
+      max-file-size: 30MB
+      max-request-size: 60MB   # 파일 여러 개를 한 번에 올릴 수 있어 요청 전체 한도를 더 크게
+  mvc:
+    async:
+      request-timeout: 600000  # 10분 — 청크가 많은 PDF 인덱싱/느린 rerank 도중 스트림이 끊기지 않게
   ai:
     ollama:
       base-url: http://localhost:11434
@@ -23,7 +31,6 @@ app:
   cors:
     allowed-origin: http://localhost:3000
 
-# QuestionAnswerAdvisor가 LLM에 최종적으로 넘기는 프롬프트를 콘솔에 출력
 logging:
   level:
-    org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor: DEBUG
+    com.lecture.rag.day3: DEBUG

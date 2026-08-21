@@ -1,26 +1,356 @@
 @import "tailwindcss";
 
+/*
+ * 디자인 토큰. 색은 전부 CSS 변수로 정의하고, 다크/라이트는 [data-theme]에서 변수만 갈아끼운다.
+ * 그래서 컴포넌트에는 dark: 접두어가 하나도 없다 — 클래스는 한 벌만 쓴다.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0a0b10;
+  --bg-glow: #141a2b;
+  --panel: #11131b;
+  --panel-2: #171a24;
+  --panel-3: #1d212c;
+  --border: #262b38;
+  --border-strong: #333a4a;
+  --text: #e8eaf0;
+  --muted: #99a1b3;
+  --subtle: #6a7285;
+  --accent: #34d3bd;
+  --accent-soft: rgba(52, 211, 189, 0.12);
+  --accent-2: #a78bfa;
+  --accent-2-soft: rgba(167, 139, 250, 0.14);
+  --ok: #3ddc97;
+  --warn: #f4bf4f;
+  --err: #f87171;
+  --user-bubble: #1e2433;
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f6f9;
+  --bg-glow: #e7ecf5;
+  --panel: #ffffff;
+  --panel-2: #f6f8fb;
+  --panel-3: #eef1f6;
+  --border: #e0e5ee;
+  --border-strong: #cfd6e2;
+  --text: #151821;
+  --muted: #5c6678;
+  --subtle: #808a9c;
+  --accent: #0f9d8c;
+  --accent-soft: rgba(15, 157, 140, 0.12);
+  --accent-2: #7c5cf0;
+  --accent-2-soft: rgba(124, 92, 240, 0.12);
+  --ok: #12a06a;
+  --warn: #b7791f;
+  --err: #d94848;
+  --user-bubble: #e8edf7;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel-2);
+  --color-panel3: var(--panel-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent2: var(--accent-2);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-err: var(--err);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--border);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 15% -10%, var(--bg-glow), transparent 60%),
+    radial-gradient(900px 500px at 110% 0%, var(--accent-2-soft), transparent 55%),
+    var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- 스크롤바 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--subtle);
+  background-clip: content-box;
+}
+
+/* ---------------------------------------------------------------- 공통 조각
+   Tailwind 유틸리티(hidden, flex 등)가 이 클래스들을 덮어쓸 수 있도록
+   반드시 @layer components 안에 둔다 — 레이어 밖에 두면 뒤에 선언된 쪽이 이겨서
+   `btn lg:hidden` 같은 조합이 동작하지 않는다. */
+@layer components {
+  .panel {
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+}
+
+.card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  background: var(--panel-3);
+  border-color: var(--border-strong);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #05201c;
+  font-weight: 600;
+}
+.btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, white);
+  border-color: transparent;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--panel-3);
+  color: var(--text);
+  border-color: transparent;
+}
+
+.btn-xs {
+  padding: 4px 8px;
+  font-size: 11.5px;
+  border-radius: 7px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  padding: 3px 9px;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  border-color: var(--accent);
+}
+.textarea {
+  resize: none;
+  line-height: 1.55;
+}
+
+.mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+}
+
+/* 인용 칩: 답변 안의 [1] 표시 */
+.citation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  margin: 0 2px;
+  padding: 0 4px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 700;
+  vertical-align: 1px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.citation:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.source-highlight {
+  animation: source-flash 1.6s ease-out;
+}
+
+@keyframes source-flash {
+  0% {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  100% {
+    border-color: var(--border);
+    background: var(--panel-2);
+  }
+}
+
+/* 스트리밍 중 답변 끝에서 깜빡이는 커서 */
+.caret-inline {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  margin-left: 3px;
+  vertical-align: -2px;
+  background: var(--accent);
+  animation: caret-blink 1s steps(2, start) infinite;
+}
+
+@keyframes caret-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fade-in {
+  animation: fade-in 180ms ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 답변 본문 타이포 */
+.answer p {
+  margin: 0 0 0.6em;
+  line-height: 1.7;
+}
+.answer p:last-child {
+  margin-bottom: 0;
+}
+.answer ul,
+.answer ol {
+  margin: 0.2em 0 0.7em 1.15em;
+  line-height: 1.7;
+}
+.answer ul {
+  list-style: disc;
+}
+.answer ol {
+  list-style: decimal;
+}
+.answer li {
+  margin: 0.15em 0;
+}
+.answer code {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.88em;
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.answer pre {
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0.4em 0 0.7em;
+}
+.answer pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+}
+.answer strong {
+  font-weight: 650;
+  color: var(--text);
 }
