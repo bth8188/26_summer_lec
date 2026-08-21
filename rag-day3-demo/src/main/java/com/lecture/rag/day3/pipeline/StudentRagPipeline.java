@@ -1,7 +1,12 @@
 package com.lecture.rag.day3.pipeline;
 
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.document.Document;
@@ -34,6 +39,8 @@ import com.lecture.rag.day3.knowledge.KnowledgeBase;
  */
 @Component
 public class StudentRagPipeline extends AbstractRagPipeline {
+
+    private static final Pattern RERANK_SCORE = Pattern.compile("(?<!\\d)(10(?:\\.0+)?|[0-9](?:\\.\\d+)?)(?!\\d)");
 
     public StudentRagPipeline(KnowledgeBase knowledgeBase, ChatModel chatModel) {
         super(knowledgeBase, chatModel);
@@ -94,7 +101,31 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     protected Optional<List<String>> rewriteQueries(String question, List<ChatRequest.Turn> history,
             RagOptions options) {
         // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        String conversation = RagPrompts.historyAsText(history, options.maxHistoryOrDefault());
+        String prompt = """
+                다음 대화와 마지막 질문을 참고해, 마지막 질문을 문서 검색에 적합한 완전한 문장으로 바꿔 쓰세요.
+                의미는 유지하되 서로 표현이 다른 검색 쿼리 3개를 만드세요.
+                각 쿼리는 줄바꿈으로만 구분하고 번호, 글머리표, 설명은 붙이지 마세요.
+
+                [이전 대화]
+                %s
+
+                [마지막 질문]
+                %s
+                """.formatted(conversation.isBlank() ? "(없음)" : conversation, question);
+
+        String response = chatClient().prompt().user(prompt).call().content();
+        Set<String> queries = new LinkedHashSet<>();
+        if (question != null && !question.isBlank()) {
+            queries.add(question.strip());
+        }
+        if (response != null) {
+            response.lines()
+                    .map(String::strip)
+                    .filter(line -> !line.isBlank())
+                    .forEach(queries::add);
+        }
+        return Optional.of(List.copyOf(queries));
     }
 
     // =================================================================== 실버 ②
@@ -122,7 +153,31 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     @Override
     protected Optional<List<Document>> keywordSearch(String query, List<String> docIds, RagOptions options) {
         // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        Set<String> words = new LinkedHashSet<>();
+        if (query != null) {
+            for (String word : query.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}_-]+")) {
+                if (word.length() >= 2) {
+                    words.add(word);
+                }
+            }
+        }
+
+        record ScoredDocument(Document document, int score) {
+        }
+
+        List<ScoredDocument> scored = knowledgeBase.chunksOf(docIds).stream()
+                .map(document -> {
+                    String text = document.getText() == null
+                            ? ""
+                            : document.getText().toLowerCase(Locale.ROOT);
+                    int score = words.stream().mapToInt(word -> countOccurrences(text, word)).sum();
+                    return new ScoredDocument(document, score);
+                })
+                .filter(result -> result.score() > 0)
+                .sorted((left, right) -> Integer.compare(right.score(), left.score()))
+                .limit(options.topKOrDefault())
+                .toList();
+        return Optional.of(scored.stream().map(ScoredDocument::document).toList());
     }
 
     // =================================================================== 실버 ③
@@ -150,7 +205,24 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     @Override
     protected Optional<List<Document>> rerank(String query, List<Document> candidates, RagOptions options) {
         // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        record ScoredDocument(Document document, double score) {
+        }
+
+        List<ScoredDocument> scored = candidates.stream()
+                .map(document -> {
+                    String prompt = """
+                            질문: %s
+                            문서: %s
+
+                            이 문서가 질문에 답하는 데 얼마나 관련 있는지 0~10 숫자 하나만 답하세요.
+                            """.formatted(query, RagPrompts.squeeze(document.getText()));
+                    String response = chatClient().prompt().user(prompt).call().content();
+                    return new ScoredDocument(document, parseRerankScore(response));
+                })
+                .sorted((left, right) -> Double.compare(right.score(), left.score()))
+                .limit(options.topKOrDefault())
+                .toList();
+        return Optional.of(scored.stream().map(ScoredDocument::document).toList());
     }
 
     // =================================================================== 골드
@@ -179,6 +251,44 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     protected Optional<String> selfCheck(String question, String answer, List<SourceRef> sources,
             RagOptions options) {
         // TODO(골드): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        String prompt = """
+                [질문]
+                %s
+
+                [근거]
+                %s
+
+                [답변]
+                %s
+
+                답변의 모든 문장이 근거에 실제로 있는 내용인지 판정하세요.
+                반드시 '통과' 또는 '주의: <근거에 없는 내용 요약>' 형식의 한 줄로만 답하세요.
+                """.formatted(question, RagPrompts.formatContext(sources), answer);
+        String response = chatClient().prompt().user(prompt).call().content();
+        if (response == null || response.isBlank()) {
+            return Optional.of("주의: 검증 결과를 생성하지 못했습니다.");
+        }
+        return Optional.of(response.lines().findFirst().orElse(response).strip());
+    }
+
+    private static int countOccurrences(String text, String word) {
+        int count = 0;
+        int fromIndex = 0;
+        while ((fromIndex = text.indexOf(word, fromIndex)) >= 0) {
+            count++;
+            fromIndex += word.length();
+        }
+        return count;
+    }
+
+    private static double parseRerankScore(String response) {
+        if (response == null) {
+            return 0.0;
+        }
+        Matcher matcher = RERANK_SCORE.matcher(response);
+        if (!matcher.find()) {
+            return 0.0;
+        }
+        return Math.clamp(Double.parseDouble(matcher.group(1)), 0.0, 10.0);
     }
 }
