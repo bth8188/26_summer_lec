@@ -244,7 +244,7 @@ public class StudentRagPipeline extends AbstractRagPipeline {
                             문서:
                             %s
                             
-                            이 문서가 질문데 답하는 데 얼마나 관련 있는지
+                            이 문서가 질문에 답하는 데 얼마나 관련 있는지
                             0부터 10 사이 숫자 하나만 답하세요.
                             """.formatted(query, doc.getText());
 
@@ -308,9 +308,48 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      * @return 사용자에게 보여줄 검증 결과 한 줄. 구현 전에는 {@code Optional.empty()}
      */
     @Override
-    protected Optional<String> selfCheck(String question, String answer, List<SourceRef> sources,
+    protected Optional<String> selfCheck(
+            String question,
+            String answer,
+            List<SourceRef> sources,
             RagOptions options) {
-        // TODO(골드): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        String context = RagPrompts.formatContext(sources);
+
+        String prompt = """
+            다음 근거 문서와 생성된 답변을 비교하세요.
+
+            [근거]
+            %s
+
+            [질문]
+            %s
+
+            [답변]
+            %s
+
+            답변의 모든 내용이 근거 문서에서 확인 가능한지 검사하세요.
+
+            반드시 아래 둘 중 하나의 형식으로 한 줄만 답하세요.
+
+            통과
+            주의: <근거에서 확인할 수 없는 내용>
+            """.formatted(context, question, answer);
+
+        String result = chatClient()
+                .prompt()
+                .user(prompt)
+                .call()
+                .content();
+
+        if (result == null || result.isBlank()) {
+            return Optional.of("검증 결과를 확인할 수 없습니다.");
+        }
+
+        return Optional.of(
+                result.lines()
+                        .findFirst()
+                        .orElse(result)
+                        .trim()
+        );
     }
 }
