@@ -142,7 +142,7 @@ export interface Health {
   status: string;
   chatModel: string;
   embeddingModel: string;
-  ollamaUp: boolean;
+  apiUp: boolean;
   chatModelReady: boolean;
   embeddingReady: boolean;
   documents: number;

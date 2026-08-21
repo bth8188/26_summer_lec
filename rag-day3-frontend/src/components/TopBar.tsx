@@ -1,6 +1,6 @@
 "use client";
 
-/** 상단 바: 상태 표시등(백엔드/Ollama/모델/지식베이스) + 파이프라인 선택 + 패널 토글. */
+/** 상단 바: 상태 표시등(백엔드/OpenAI/모델/지식베이스) + 파이프라인 선택 + 패널 토글. */
 
 import type { AgentConsole } from "@/lib/useAgentConsole";
 import { Badge, Icon, StatusDot, tierLabel } from "./ui";
@@ -49,8 +49,8 @@ export function TopBar({
         ) : (
           <>
             <span className="chip">
-              <StatusDot state={health?.ollamaUp ? "ok" : "err"} />
-              Ollama
+              <StatusDot state={health?.apiUp ? "ok" : "err"} />
+              OpenAI
             </span>
             <span className="chip mono" title="채팅 모델">
               <StatusDot state={health?.chatModelReady ? "ok" : "warn"} />

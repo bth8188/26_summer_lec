@@ -4,12 +4,9 @@
 
 ## 사전 준비
 ```bash
-brew install ollama
-brew services start ollama
-ollama pull bge-m3          # 임베딩 (사양 무관 공통)
-ollama pull llama3.2:3b     # LLM (8GB 노트북 기준. 16GB+면 qwen2.5:7b 등으로 교체)
+export OPENAI_API_KEY=sk-...   # OpenAI API 키 (임베딩: text-embedding-3-small, LLM: gpt-4o-mini)
 
-docker compose up -d        # PGVector (Lab2.1부터 필요)
+docker compose up -d            # PGVector (Lab2.1부터 필요)
 ```
 
 ## 실행 방법
@@ -66,5 +63,6 @@ com.lecture.rag
 - `src/main/resources/scenarios/` — Lab2.0에서 학생들이 고르는 8개 시나리오 문서(이커머스 매뉴얼, arXiv 논문 2종, 스타트업 이용약관, 위키백과 3종, Spring AI README) — `ChunkingStrategyDemo`가 이 중 일부로 실측 시연
 
 ## 주의사항
-- `dimensions: 1024`는 반드시 bge-m3 실제 출력 차원과 일치해야 함(Lab1.1에서 확인한 값) — 다르면 `DataIntegrityViolationException`
+- `OPENAI_API_KEY` 환경변수가 설정되어 있어야 함 — 없으면 애플리케이션 기동 시 인증 오류 발생
+- `application.yml`의 `spring.ai.openai.embedding.options.dimensions`와 `spring.ai.vectorstore.pgvector.dimensions`(현재 1024)는 반드시 서로 일치해야 함 — 다르면 `DataIntegrityViolationException`
 - PGVector 포트 충돌 시 `docker-compose.yml`의 왼쪽 포트만 바꾸고 `application.yml`의 `datasource.url`도 맞춰서 수정

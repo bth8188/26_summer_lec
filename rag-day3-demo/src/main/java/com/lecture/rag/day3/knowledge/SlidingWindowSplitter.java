@@ -17,7 +17,7 @@ class SlidingWindowSplitter implements ChunkingStrategy.CharSplitter {
 
     SlidingWindowSplitter(int windowChars, int strideChars) {
         this.windowChars = Math.max(50, windowChars);
-        this.strideChars = Math.clamp(strideChars, 1, this.windowChars);
+        this.strideChars = Math.max(1, Math.min(this.windowChars, strideChars));
     }
 
     @Override

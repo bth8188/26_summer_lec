@@ -61,8 +61,8 @@ public class IndexingService {
         public static IndexOptions of(String strategy, Integer chunkSize, Integer overlap) {
             return new IndexOptions(
                     ChunkingStrategy.parse(strategy),
-                    chunkSize == null ? 400 : Math.clamp(chunkSize, 80, 4000),
-                    overlap == null ? 80 : Math.clamp(overlap, 0, 1000));
+                    chunkSize == null ? 400 : Math.max(80, Math.min(4000, chunkSize)),
+                    overlap == null ? 80 : Math.max(0, Math.min(1000, overlap)));
         }
     }
 
@@ -146,7 +146,7 @@ public class IndexingService {
 
         // 3) 임베딩 -----------------------------------------------------------
         String embedStep = "embed-" + docId;
-        sink.next(AgentEvent.stepStart(embedStep, prefix + "임베딩 & 저장 (bge-m3)"));
+        sink.next(AgentEvent.stepStart(embedStep, prefix + "임베딩 & 저장"));
         t0 = System.currentTimeMillis();
 
         for (int from = 0; from < chunks.size(); from += EMBED_BATCH) {
@@ -155,7 +155,7 @@ public class IndexingService {
             sink.next(AgentEvent.progress(embedStep, prefix + "임베딩 & 저장", to, chunks.size()));
         }
         long embedMs = System.currentTimeMillis() - t0;
-        sink.next(AgentEvent.stepDone(embedStep, prefix + "임베딩 & 저장 (bge-m3)", embedMs,
+        sink.next(AgentEvent.stepDone(embedStep, prefix + "임베딩 & 저장", embedMs,
                 chunks.size() + "개 벡터 저장 완료"));
 
         IndexedDocument indexed = new IndexedDocument(docId, fileName, pdf ? "pdf" : "text",

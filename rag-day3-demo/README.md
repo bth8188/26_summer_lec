@@ -7,21 +7,20 @@
 
 ## 사전 준비
 
-**Ollama 설치**
+로컬 Ollama 대신 **OpenAI API**를 쓴다. [platform.openai.com](https://platform.openai.com/api-keys)에서
+API 키를 발급받아 환경변수로 넘긴다.
 
-macOS:
+macOS/Linux:
 ```bash
-brew install ollama
-brew services start ollama
+export OPENAI_API_KEY=sk-...
+```
+Windows (PowerShell):
+```powershell
+$env:OPENAI_API_KEY = "sk-..."
 ```
 
-Windows: [ollama.com/download](https://ollama.com/download)에서 인스톨러 받아서 실행하면 됨 — Docker/WSL 필요 없이 일반 데스크톱 앱처럼 설치되고, 설치 후 자동으로 백그라운드 서비스로 상시 실행됨(따로 켜는 명령 불필요).
-
-**모델 다운로드** (OS 공통)
-```bash
-ollama pull bge-m3
-ollama pull llama3.2:3b
-```
+기본 모델은 채팅 `gpt-4o-mini`, 임베딩 `text-embedding-3-small`이다
+(`application.yml`의 `spring.ai.openai.chat.options.model` / `embedding.options.model`에서 바꿀 수 있다).
 
 ## 실행 방법
 ```bash
@@ -30,7 +29,7 @@ ollama pull llama3.2:3b
 ```bat
 run.bat         :: Windows
 ```
-프론트를 띄우면 상단 상태 표시등에서 Ollama·모델·문서 수를 바로 확인할 수 있다.
+프론트를 띄우면 상단 상태 표시등에서 OpenAI·모델·문서 수를 바로 확인할 수 있다.
 
 ## 구조
 
@@ -49,7 +48,8 @@ day3/
 │   ├─ RagPipeline        인터페이스 — @Component만 붙이면 UI 드롭다운에 자동 등록
 │   ├─ AbstractRagPipeline 공통 흐름(검색→컨텍스트→스트리밍) + 확장 훅
 │   ├─ BasicRagPipeline   브론즈: 기준선 파이프라인 (그대로 동작)
-│   ├─ StudentRagPipeline ★ 실습 파일 — TODO 4개
+│   ├─ StudentRagPipeline 실버/골드: 질문 재작성·키워드 검색·재정렬·자기 검증 참조 구현
+│   ├─ GraphRagPipeline   골드: LightRAG 스타일 그래프 RAG (개체·관계 추출 → 그래프 탐색)
 │   └─ RagPrompts         프롬프트/컨텍스트 조립
 ├─ eval/JudgeService   골드: LLM-as-judge 채점 (Day3 Lab3.1)
 └─ web/               컨트롤러 3개
@@ -69,7 +69,7 @@ Spring MVC에서 `Flux`를 이 미디어 타입으로 리턴하면 원소가 만
 | DELETE | `/api/knowledge` | 전체 초기화 |
 | GET | `/api/knowledge/strategies` | 선택 가능한 청킹 전략 |
 | GET | `/api/pipelines` | 선택 가능한 파이프라인 |
-| GET | `/api/health` | 백엔드/Ollama/모델/문서 상태 |
+| GET | `/api/health` | 백엔드/OpenAI/모델/문서 상태 |
 | POST | `/api/evaluate` | 답변 채점 (LLM-as-judge) |
 
 ### 스트림 이벤트 형식

@@ -44,21 +44,21 @@ public record RagOptions(
     }
 
     public int topKOrDefault() {
-        return topK == null ? DEFAULT_TOP_K : Math.clamp(topK, 1, 30);
+        return topK == null ? DEFAULT_TOP_K : Math.max(1, Math.min(30, topK));
     }
 
     public double similarityThresholdOrDefault() {
         return similarityThreshold == null
                 ? DEFAULT_SIMILARITY_THRESHOLD
-                : Math.clamp(similarityThreshold, 0.0, 1.0);
+                : Math.max(0.0, Math.min(1.0, similarityThreshold));
     }
 
     public double temperatureOrDefault() {
-        return temperature == null ? DEFAULT_TEMPERATURE : Math.clamp(temperature, 0.0, 2.0);
+        return temperature == null ? DEFAULT_TEMPERATURE : Math.max(0.0, Math.min(2.0, temperature));
     }
 
     public int maxHistoryOrDefault() {
-        return maxHistory == null ? DEFAULT_MAX_HISTORY : Math.clamp(maxHistory, 0, 20);
+        return maxHistory == null ? DEFAULT_MAX_HISTORY : Math.max(0, Math.min(20, maxHistory));
     }
 
     /** 해당 기능 토글이 켜져 있는지. */

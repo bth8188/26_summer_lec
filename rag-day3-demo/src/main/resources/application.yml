@@ -17,14 +17,14 @@ spring:
     async:
       request-timeout: 600000  # 10분 — 청크가 많은 PDF 인덱싱/느린 rerank 도중 스트림이 끊기지 않게
   ai:
-    ollama:
-      base-url: http://localhost:11434
+    openai:
+      api-key: ${OPENAI_API_KEY:}   # 로컬 Ollama 대신 OpenAI API 사용 — 실행 전에 환경변수로 키를 넘길 것
       embedding:
         options:
-          model: bge-m3   # 실측 결과 nomic-embed-text는 한국어 의미 구분에 실패함 — 반드시 bge-m3 사용
+          model: text-embedding-3-small
       chat:
         options:
-          model: llama3.2:3b
+          model: gpt-4o-mini
 
 # Next.js 프론트(기본 localhost:3000)에서 이 API를 fetch로 직접 호출하기 위한 CORS 허용 origin
 app:
