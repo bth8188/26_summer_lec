@@ -1,7 +1,11 @@
 package com.lecture.rag.day3.pipeline;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.document.Document;
@@ -93,8 +97,35 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     @Override
     protected Optional<List<String>> rewriteQueries(String question, List<ChatRequest.Turn> history,
             RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        String historyText = RagPrompts.historyAsText(history, options.maxHistoryOrDefault());
+        String prompt = """
+                다음은 지금까지의 대화입니다.
+                %s
+
+                위 대화를 참고해서, 마지막 질문을 문서 검색에 쓸 수 있게 완전한 문장으로 바꿔 쓰세요.
+                서로 표현이 다른 3개를 줄바꿈으로만 구분해서 출력하고, 번호나 설명은 붙이지 마세요.
+
+                [마지막 질문]
+                %s
+                """.formatted(historyText.isBlank() ? "(이전 대화 없음)" : historyText, question);
+
+        String response = chatClient().prompt().user(prompt).call().content();
+        if (response == null || response.isBlank()) {
+            return Optional.empty();
+        }
+
+        List<String> rewritten = new ArrayList<>();
+        for (String line : response.split("\n")) {
+            String trimmed = line.strip();
+            if (!trimmed.isEmpty()) {
+                rewritten.add(trimmed);
+            }
+        }
+        if (rewritten.isEmpty()) {
+            return Optional.empty();
+        }
+        rewritten.add(question);
+        return Optional.of(rewritten);
     }
 
     // =================================================================== 실버 ②
@@ -121,8 +152,51 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      */
     @Override
     protected Optional<List<Document>> keywordSearch(String query, List<String> docIds, RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        List<String> words = new ArrayList<>();
+        for (String word : query.split("\\s+")) {
+            String trimmed = word.strip().toLowerCase();
+            if (trimmed.length() >= 2) {
+                words.add(trimmed);
+            }
+        }
+        if (words.isEmpty()) {
+            return Optional.empty();
+        }
+
+        record Scored(Document doc, int score) {
+        }
+
+        List<Scored> scored = new ArrayList<>();
+        for (Document chunk : this.knowledgeBase.chunksOf(docIds)) {
+            String text = chunk.getText() == null ? "" : chunk.getText().toLowerCase();
+            int score = 0;
+            for (String word : words) {
+                score += countOccurrences(text, word);
+            }
+            if (score > 0) {
+                scored.add(new Scored(chunk, score));
+            }
+        }
+        if (scored.isEmpty()) {
+            return Optional.empty();
+        }
+
+        List<Document> top = scored.stream()
+                .sorted(Comparator.comparingInt(Scored::score).reversed())
+                .limit(options.topKOrDefault())
+                .map(Scored::doc)
+                .toList();
+        return Optional.of(top);
+    }
+
+    private static int countOccurrences(String text, String word) {
+        int count = 0;
+        int index = 0;
+        while ((index = text.indexOf(word, index)) != -1) {
+            count++;
+            index += word.length();
+        }
+        return count;
     }
 
     // =================================================================== 실버 ③
@@ -147,10 +221,42 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      *
      * @return 관련도 높은 순으로 정렬된 청크. 구현 전에는 {@code Optional.empty()}
      */
+    private static final Pattern FIRST_NUMBER = Pattern.compile("\\d+");
+
     @Override
     protected Optional<List<Document>> rerank(String query, List<Document> candidates, RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        record Scored(Document doc, int score) {
+        }
+
+        List<Scored> scored = candidates.stream()
+                .map(doc -> new Scored(doc, scoreRelevance(query, doc)))
+                .toList();
+        List<Document> top = scored.stream()
+                .sorted(Comparator.comparingInt(Scored::score).reversed())
+                .limit(options.topKOrDefault())
+                .map(Scored::doc)
+                .toList();
+        return Optional.of(top);
+    }
+
+    /** 후보 청크 하나가 질문에 얼마나 관련 있는지 LLM에게 0~10점으로 채점시킨다. */
+    private int scoreRelevance(String query, Document doc) {
+        String prompt = """
+                질문: %s
+                문서: %s
+                이 문서가 질문에 답하는 데 얼마나 관련 있는지 0~10 사이 숫자 하나만 답하세요. 설명은 하지 마세요.
+                """.formatted(query, doc.getText());
+
+        String response = chatClient().prompt().user(prompt).call().content();
+        if (response == null) {
+            return 0;
+        }
+        Matcher matcher = FIRST_NUMBER.matcher(response.trim());
+        return matcher.find() ? Math.min(10, Integer.parseInt(matcher.group())) : 0;
     }
 
     // =================================================================== 골드
