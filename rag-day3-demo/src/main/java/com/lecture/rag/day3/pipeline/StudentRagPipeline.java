@@ -1,9 +1,19 @@
 package com.lecture.rag.day3.pipeline;
 
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.ToIntFunction;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Component;
 
@@ -35,6 +45,22 @@ import com.lecture.rag.day3.knowledge.KnowledgeBase;
 @Component
 public class StudentRagPipeline extends AbstractRagPipeline {
 
+    private static final int RRF_K = 5;
+    private static final double BM25_K1 = 1.2;   // 반복 등장이 포화되는 속도
+    private static final double BM25_B = 0.75;   // 청크 길이 정규화 강도
+
+    private static final Pattern FIRST_NUMBER = Pattern.compile("\\d+");
+
+    /** 뒤에 붙어 매칭을 막는 조사들. 긴 것부터 나열해야 "에서는"이 "는"보다 먼저 걸린다. */
+    private static final List<String> PARTICLES = List.of(
+            "에서는", "으로는", "에게서", "이라고", "라고", "에서", "에게", "으로", "까지", "부터",
+            "보다", "처럼", "마다", "조차", "밖에", "이나", "한테", "와의", "과의",
+            "은", "는", "이", "가", "을", "를", "과", "와", "의", "도", "만", "에", "로", "야");
+
+    /** 어느 청크에나 나와서 변별력이 없는 단어. 남겨두면 엉뚱한 청크가 상위로 올라온다. */
+    private static final Set<String> STOP_WORDS = Set.of(
+            "무엇", "누구", "어디", "언제", "어떻게", "얼마", "관계", "설명", "알려", "뭐야", "인가", "대해", "정도");
+
     public StudentRagPipeline(KnowledgeBase knowledgeBase, ChatModel chatModel) {
         super(knowledgeBase, chatModel);
     }
@@ -56,7 +82,7 @@ public class StudentRagPipeline extends AbstractRagPipeline {
 
     @Override
     public String description() {
-        return "StudentRagPipeline.java의 TODO를 채워서 만드는 나만의 파이프라인.";
+        return "BM25 하이브리드 검색 + RRF 융합 재정렬. 벡터가 놓치는 고유명사를 키워드로 보완한다.";
     }
 
     @Override
@@ -121,8 +147,101 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      */
     @Override
     protected Optional<List<Document>> keywordSearch(String query, List<String> docIds, RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        List<String> terms = keywordsOf(query);
+        if (terms.isEmpty()) {
+            return Optional.empty();
+        }
+
+        List<Document> chunks = this.knowledgeBase.chunksOf(docIds);   // docIds가 비면 전체 청크
+        Map<String, Double> idf = idfOf(terms, chunks);
+        double avgLength = averageLength(chunks);
+        record Scored(Document doc, double score) {}
+
+        List<Document> hits = chunks.stream()
+                .map(chunk -> new Scored(chunk, score(chunk.getText(), terms, idf, avgLength)))
+                .filter(scored -> scored.score() > 0)   // 0점은 버린다 — 남기면 컨텍스트가 오염된다
+                .sorted(Comparator.comparingDouble(Scored::score).reversed())
+                .limit(options.topKOrDefault())
+                .map(Scored::doc)
+                .toList();
+
+        System.out.println("  [keyword] 검색어=" + terms + " idf="
+                + idf.entrySet().stream().map(e -> e.getKey() + ":" + String.format("%.2f", e.getValue())).toList());
+        for (Document hit : hits) {
+            System.out.println("  [keyword] " + String.format("%.2f", score(hit.getText(), terms, idf, avgLength)) + " | "
+                    + hit.getText().replaceAll("\\s+", " ").substring(0, Math.min(45, hit.getText().length())));
+        }
+        return hits.isEmpty() ? Optional.empty() : Optional.of(hits);
+    }
+
+    /**
+     * 청크 점수 = BM25.
+     *
+     * <p>IDF만 곱하면 아직 부족하다. "장료의 고향이 어디야?"에서 IDF는 고향 4.26 / 장료 1.06으로
+     * 제대로 나왔는데도, "장료"가 8번 나오는 청크가 8 x 1.06 = 8.48점으로 "고향"이 한 번 나오는
+     * 정답 청크(1 x 4.26)를 눌렀다. 등장 횟수를 선형으로 더하기 때문이다.
+     *
+     * <p>BM25는 두 가지를 더한다. 같은 단어가 반복돼도 점수가 <b>포화</b>되게 만들고(k1),
+     * 긴 청크가 단어를 많이 담는다는 이유만으로 유리해지지 않게 <b>길이로 정규화</b>한다(b).
+     * 이러면 위 예에서 장료 8회는 약 2점에 머물고 희귀한 고향 1회가 4.26점으로 이긴다.
+     */
+    private double score(String text, List<String> terms, Map<String, Double> idf, double avgLength) {
+        String lower = text.toLowerCase();
+        double norm = BM25_K1 * (1 - BM25_B + BM25_B * (text.length() / Math.max(1.0, avgLength)));
+        double total = 0;
+        for (String term : terms) {
+            int tf = 0, from = 0;
+            while ((from = lower.indexOf(term, from)) >= 0) {
+                tf++;
+                from += term.length();
+            }
+            if (tf > 0) {
+                total += idf.getOrDefault(term, 1.0) * (tf * (BM25_K1 + 1)) / (tf + norm);
+            }
+        }
+        return total;
+    }
+
+    private double averageLength(List<Document> corpus) {
+        return corpus.stream().mapToInt(doc -> doc.getText().length()).average().orElse(1.0);
+    }
+
+    /** 단어가 몇 개 청크에 등장하는지로 희귀도를 계산한다. 전 청크에 다 나오는 단어는 0에 수렴. */
+    private Map<String, Double> idfOf(List<String> terms, List<Document> corpus) {
+        Map<String, Double> idf = new HashMap<>();
+        int total = Math.max(1, corpus.size());
+        for (String term : terms) {
+            long df = corpus.stream()
+                    .filter(doc -> doc.getText().toLowerCase().contains(term))
+                    .count();
+            idf.put(term, Math.log((double) total / (1 + df)) + 1.0);   // +1은 df=total일 때 0이 되는 것 방지
+        }
+        return idf;
+    }
+
+    /**
+     * 질문을 검색어로 쪼갠다.
+     *
+     * <p>한국어에서는 공백으로만 자르면 조사가 붙어버려 매칭이 안 된다 —
+     * "악진과"로는 본문의 "악진"을 찾지 못한다. 그래서 뒤에 붙은 조사를 떼어낸다.
+     * (형태소 분석기를 쓰면 정확하지만 의존성이 늘어나서, 여기서는 접미 제거로 대신한다)
+     */
+    private List<String> keywordsOf(String query) {
+        return Arrays.stream(query.toLowerCase().split("[^\\p{L}\\p{N}]+"))
+                .map(this::stripParticle)
+                .filter(word -> word.length() >= 2)
+                .filter(word -> !STOP_WORDS.contains(word))
+                .distinct()
+                .toList();
+    }
+
+    private String stripParticle(String word) {
+        for (String particle : PARTICLES) {   // 긴 것부터 검사해야 "에서는"이 "는"보다 먼저 걸린다
+            if (word.length() > particle.length() + 1 && word.endsWith(particle)) {
+                return word.substring(0, word.length() - particle.length());
+            }
+        }
+        return word;
     }
 
     // =================================================================== 실버 ③
@@ -149,8 +268,94 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      */
     @Override
     protected Optional<List<Document>> rerank(String query, List<Document> candidates, RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        // 신호 3개를 각각 순위로 바꾼 뒤 RRF로 합친다.
+        // LLM 점수만 믿으면 안 되는 이유는 judge()의 주석 참고 — 이 문서에서 3B 모델은
+        // 정답 청크에 6점, 무관한 청크에 9점을 줬다. 그래서 벡터·키워드 신호를 같이 세운다.
+        List<String> terms = keywordsOf(query);
+        // IDF는 후보만이 아니라 전체 청크로 계산해야 희귀도가 제대로 나온다
+        List<Document> corpus = this.knowledgeBase.allChunks();
+        Map<String, Double> idf = idfOf(terms, corpus);
+        double avgLength = averageLength(corpus);
+        Map<Document, Integer> vectorRank = rankOf(candidates, doc -> -candidates.indexOf(doc));
+        Map<Document, Integer> keywordRank = rankOf(candidates,
+                doc -> (int) Math.round(score(doc.getText(), terms, idf, avgLength) * 100));
+
+        // LLM 채점은 기본으로 끈다 — 이 모델에서는 순위를 오히려 망가뜨린다(judge() 주석의 실측 참고).
+        // 더 큰 모델을 쓸 때 extras.llmJudge=true 로 켜서 비교해볼 수 있게 남겨둔다.
+        boolean useLlm = Boolean.TRUE.equals(options.extra("llmJudge", Boolean.FALSE));
+        Map<Document, Integer> llmRank = useLlm
+                ? rankOf(candidates, doc -> judge(query, doc.getText()))
+                : Map.of();
+
+        List<Document> fused = candidates.stream()
+                .sorted(Comparator.comparingDouble((Document doc) ->
+                        rrf(vectorRank.get(doc)) + rrf(keywordRank.get(doc))
+                                + (useLlm ? rrf(llmRank.get(doc)) : 0.0))
+                        .reversed())
+                .toList();
+
+        for (Document doc : fused) {
+            System.out.println("  [rerank] 벡터" + vectorRank.get(doc) + "위 키워드" + keywordRank.get(doc)
+                    + (useLlm ? "위 LLM" + llmRank.get(doc) : "") + "위 | "
+                    + doc.getText().replaceAll("\\s+", " ").substring(0, Math.min(40, doc.getText().length())));
+        }
+
+        // 자르는 건 AbstractRagPipeline#finalizeSources가 topK로 알아서 한다 — 여기서는 정렬만 한다.
+        // 키워드로 찾아 뒤에 붙었던 청크가 상위로 올라올 수 있는 유일한 지점이기도 하다.
+        return Optional.of(fused);
+    }
+
+    /** 점수가 높은 순으로 1위부터 매긴다. 점수가 같으면 원래 순서를 유지한다. */
+    private Map<Document, Integer> rankOf(List<Document> docs, ToIntFunction<Document> scorer) {
+        List<Document> sorted = docs.stream()
+                .sorted(Comparator.comparingInt(scorer).reversed())
+                .toList();
+        Map<Document, Integer> ranks = new IdentityHashMap<>();
+        for (int i = 0; i < sorted.size(); i++) {
+            ranks.put(sorted.get(i), i + 1);
+        }
+        return ranks;
+    }
+
+    /**
+     * Reciprocal Rank Fusion — 서로 단위가 다른 순위들을 더할 수 있게 1/(k+순위)로 바꾼다.
+     * 흔히 쓰는 k=60은 후보가 수백 개일 때 값이고, 여기처럼 10개 안팎이면 상위 순위 차이가
+     * 뭉개지므로 k를 작게 잡는다.
+     */
+    private double rrf(int rank) {
+        return 1.0 / (RRF_K + rank);
+    }
+
+    /**
+     * 청크 하나를 0~10점으로 채점. Day2 Lab2.2 LlmReranker와 같은 방식이되 <b>온도를 0으로 고정</b>한다.
+     *
+     * <p><b>주의: 이 모델에서는 신뢰할 수 없다.</b> "이전, 악진과 장료의 관계는?" 질문에서
+     * 정답 청크("악진의 견고한 방어, 장료의 날카로운 공격, 이전의 적절한 지원")를 9개 중 7위로 매기고,
+     * 전혀 무관한 청크를 1위로 올렸다. 그래서 rerank()는 기본적으로 이 점수를 쓰지 않는다.
+     *
+     * <p>채점은 창의성이 필요한 작업이 아니라 같은 입력이면 같은 점수가 나와야 하는 작업이다.
+     * 기본 온도(0.2)로 두면 llama3.2:3b가 무관한 청크에 6점과 8점을 오락가락 매겨서
+     * 순위가 실행할 때마다 뒤집힌다(실측: 같은 청크 5회 채점에 6,6,6,8,8).
+     * 온도 0에서는 관련 청크 8점 / 무관 청크 6점으로 안정적으로 갈린다.
+     */
+    private int judge(String query, String text) {
+        String answer = chatClient().prompt()
+                .options(ChatOptions.builder().temperature(0.0))
+                .user("""
+                        질문: %s
+                        문서: %s
+                        이 문서가 질문에 답하는 데 얼마나 관련 있는지 0~10 숫자 하나만 답하세요. 설명은 하지 마세요.
+                        """.formatted(query, text))
+                .call()
+                .content();
+
+        // 숫자만 답하라고 해도 소형 모델은 설명을 덧붙인다 — 첫 숫자만 뽑아 방어한다
+        Matcher matcher = FIRST_NUMBER.matcher(answer == null ? "" : answer);
+        return matcher.find() ? Math.min(10, Integer.parseInt(matcher.group())) : 0;
     }
 
     // =================================================================== 골드
