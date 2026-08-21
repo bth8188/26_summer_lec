@@ -16,6 +16,10 @@ spring:
   mvc:
     async:
       request-timeout: 600000  # 10분 — 청크가 많은 PDF 인덱싱/느린 rerank 도중 스트림이 끊기지 않게
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ragday3db
+    username: postgres
+    password: postgres
   ai:
     ollama:
       base-url: http://localhost:11434
@@ -25,6 +29,12 @@ spring:
       chat:
         options:
           model: llama3.2:3b
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 1024
+        initialize-schema: true
 
 # Next.js 프론트(기본 localhost:3000)에서 이 API를 fetch로 직접 호출하기 위한 CORS 허용 origin
 app:

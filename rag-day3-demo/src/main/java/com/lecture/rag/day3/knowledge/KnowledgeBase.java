@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Component;
 
 /**
@@ -36,7 +36,7 @@ public class KnowledgeBase {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeBase.class);
 
     private final EmbeddingModel embeddingModel;
-    private final SimpleVectorStore store;
+    private final VectorStore store;
 
     /** docId -> 문서 메타. 업로드 순서를 유지하려고 LinkedHashMap. */
     private final Map<String, IndexedDocument> documents = new LinkedHashMap<>();
@@ -47,9 +47,11 @@ public class KnowledgeBase {
      */
     private final Map<String, List<Document>> chunksByDoc = new LinkedHashMap<>();
 
-    public KnowledgeBase(EmbeddingModel embeddingModel) {
+    public KnowledgeBase(
+            EmbeddingModel embeddingModel,
+            VectorStore store) {
         this.embeddingModel = embeddingModel;
-        this.store = SimpleVectorStore.builder(embeddingModel).build();
+        this.store = store;
     }
 
     public EmbeddingModel embeddingModel() {
