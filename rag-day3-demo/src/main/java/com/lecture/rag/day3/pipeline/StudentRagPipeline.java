@@ -40,6 +40,8 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     }
     private record KeywordScore(Document document, long score) {
     }
+    private record RerankScore(Document document, int score) {
+    }
 
     @Override
     public String id() {
@@ -185,9 +187,57 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      * @return 관련도 높은 순으로 정렬된 청크. 구현 전에는 {@code Optional.empty()}
      */
     @Override
-    protected Optional<List<Document>> rerank(String query, List<Document> candidates, RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+    protected Optional<List<Document>> rerank(
+            String query,
+            List<Document> candidates,
+            RagOptions options) {
+        List<RerankScore> scored = candidates.stream()
+                .map( doc ->{
+                    String prompt= """
+                            질문: %s
+                            
+                            문서:
+                            %s
+                            
+                            이 문서가 질문데 답하는 데 얼마나 관련 있는지
+                            0부터 10 사이 숫자 하나만 답하세요.
+                            """.formatted(query, doc.getText());
+
+                    String response = chatClient()
+                            .prompt()
+                            .user(prompt)
+                            .call()
+                            .content();
+
+                    int score = extractScore(response);
+
+                    return new RerankScore(doc, score);
+                })
+                .sorted((a,b) -> Integer.compare(b.score(),a.score()))
+                .limit(options.topKOrDefault())
+                .toList();
+
+        return Optional.of(
+                scored.stream()
+                        .map(RerankScore::document)
+                        .toList()
+        );
+    }
+
+    private int extractScore(String response) {
+        if (response == null) {
+            return 0;
+        }
+
+        var matcher = java.util.regex.Pattern
+                .compile("\\b(10|[0-9])\\b")
+                .matcher(response);
+
+        if (matcher.find()) {
+            return Integer.parseInt(matcher.group(1));
+        }
+
+        return 0;
     }
 
     // =================================================================== 골드
