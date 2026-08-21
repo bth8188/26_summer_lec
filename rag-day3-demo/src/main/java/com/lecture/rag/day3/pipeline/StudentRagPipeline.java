@@ -95,10 +95,55 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      * @return 검색에 쓸 쿼리 목록. 구현 전에는 {@code Optional.empty()}
      */
     @Override
-    protected Optional<List<String>> rewriteQueries(String question, List<ChatRequest.Turn> history,
+    protected Optional<List<String>> rewriteQueries(
+            String question,
+            List<ChatRequest.Turn> history,
             RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+
+        String historyText = RagPrompts.historyAsText(
+                history,
+                options.maxHistoryOrDefault()
+        );
+
+        String prompt = """
+            다음 대화를 참고해서 마지막 질문을
+            문서 검색에 적합한 완전한 질문으로 바꾸세요.
+
+            서로 표현이 다른 검색 질문 3개를 만드세요.
+            번호나 설명 없이 한 줄에 하나씩만 출력하세요.
+
+            [이전 대화]
+            %s
+
+            [현재 질문]
+            %s
+            """.formatted(historyText, question);
+
+        String response = chatClient()
+                .prompt()
+                .user(prompt)
+                .call()
+                .content();
+
+        if (response == null || response.isBlank()) {
+            return Optional.of(List.of(question));
+        }
+
+        List<String> rewritten = response.lines()
+                .map(String::trim)
+                .filter(line -> !line.isBlank())
+                .limit(3)
+                .toList();
+
+        List<String> queries = new java.util.ArrayList<>();
+        queries.add(question);
+        queries.addAll(rewritten);
+
+        return Optional.of(
+                queries.stream()
+                        .distinct()
+                        .toList()
+        );
     }
 
     // =================================================================== 실버 ②
