@@ -11,3 +11,7 @@ public class RagDay3DemoApplication {
 	}
 
 }
+
+//Rest endpoint는 제공
+//AbstractRagPipeline의 훅 완성
+//rewriteOrigin

@@ -1,5 +1,8 @@
 HELP.md
 target/
+
+### 관광 가이드북 PDF (용량·저작권 문제로 커밋하지 않음, TourDocumentLoader가 기동 시 읽음) ###
+/docs/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

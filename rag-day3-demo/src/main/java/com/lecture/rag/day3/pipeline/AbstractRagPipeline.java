@@ -3,6 +3,7 @@ package com.lecture.rag.day3.pipeline;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,12 +47,16 @@ public abstract class AbstractRagPipeline implements RagPipeline {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractRagPipeline.class);
 
+    protected static final String STEP_TRANSLATE_IN = "translateIn";
     protected static final String STEP_ANALYZE = "analyze";
     protected static final String STEP_RETRIEVE = "retrieve";
     protected static final String STEP_KEYWORD = "keyword";
     protected static final String STEP_RERANK = "rerank";
     protected static final String STEP_GENERATE = "generate";
     protected static final String STEP_VERIFY = "verify";
+
+    /** 한글이 한 글자도 없으면 영어 등 외국어 질문으로 간주한다(외국인 관광객 지원용 휴리스틱). */
+    private static final Pattern HANGUL = Pattern.compile("[\\uAC00-\\uD7A3]");
 
     protected final KnowledgeBase knowledgeBase;
     protected final ChatModel chatModel;
@@ -115,6 +120,34 @@ public abstract class AbstractRagPipeline implements RagPipeline {
         return options.enabled(feature) && supportedFeatures().contains(feature);
     }
 
+    /** 한글이 없는 질문(주로 영어)인지 — 외국인 관광객 질문 자동 번역 흐름의 트리거. */
+    private static boolean isForeignLanguage(String text) {
+        return text != null && !text.isBlank() && !HANGUL.matcher(text).find();
+    }
+
+    /** 영어 등 외국어 질문을 검색·생성에 쓸 한국어로 번역한다. */
+    private String translateToKorean(String text) {
+        String prompt = """
+                다음 문장을 한국어로 자연스럽게 번역하세요. 번역 결과만 출력하고 설명은 붙이지 마세요.
+
+                %s
+                """.formatted(text);
+        String result = chatClient().prompt().user(prompt).call().content();
+        return result == null ? "" : result.strip();
+    }
+
+    /** 한국어로 생성된 답변을 외국어 질문자에게 보여주기 위해 영어로 번역한다. */
+    private String translateToEnglish(String text) {
+        String prompt = """
+                Translate the following Korean text into natural English. Output only the translation, no explanation.
+                Keep every citation marker (like [1], [2], [3]) exactly as-is, attached to the same sentence it follows in the original — do not drop, renumber, or move them.
+
+                %s
+                """.formatted(text);
+        String result = chatClient().prompt().user(prompt).call().content();
+        return result == null ? "" : result.strip();
+    }
+
     @Override
     public Flux<AgentEvent> run(ChatRequest request) {
         return new Execution(request).stream();
@@ -126,9 +159,10 @@ public abstract class AbstractRagPipeline implements RagPipeline {
 
         private final ChatRequest request;
         private final RagOptions options;
-        private final String question;
+        private final boolean foreignLanguage;
         private final long startedAt = System.currentTimeMillis();
 
+        private String question;
         private List<String> queries;
         private List<Document> candidates = List.of();
         private List<Document> selected = List.of();
@@ -145,6 +179,7 @@ public abstract class AbstractRagPipeline implements RagPipeline {
             this.options = request.optionsOrDefault();
             this.question = request.questionOrEmpty();
             this.queries = List.of(this.question);
+            this.foreignLanguage = isForeignLanguage(this.question);
         }
 
         Flux<AgentEvent> stream() {
@@ -155,6 +190,7 @@ public abstract class AbstractRagPipeline implements RagPipeline {
                         AgentEvent.done(0));
             }
             return Flux.concat(
+                    translateInPhase(),
                     analyzePhase(),
                     retrievePhase(),
                     rerankPhase(),
@@ -164,6 +200,25 @@ public abstract class AbstractRagPipeline implements RagPipeline {
                     .onErrorResume(this::toErrorEvents)
                     // 검색·LLM 호출은 블로킹이라 서블릿 요청 스레드를 붙잡지 않도록 별도 스레드에서 실행
                     .subscribeOn(Schedulers.boundedElastic());
+        }
+
+        // (0) 외국어 질문 번역 ---------------------------------------------------
+        private Flux<AgentEvent> translateInPhase() {
+            if (!this.foreignLanguage) {
+                return Flux.empty();
+            }
+            return Flux.concat(
+                    Flux.just(AgentEvent.stepStart(STEP_TRANSLATE_IN, "질문 번역 (외국어 → 한국어)")),
+                    Flux.defer(() -> {
+                        long t0 = System.currentTimeMillis();
+                        String translated = translateToKorean(this.question);
+                        if (!translated.isBlank()) {
+                            this.question = translated;
+                            this.queries = List.of(this.question);
+                        }
+                        return Flux.just(AgentEvent.stepDone(STEP_TRANSLATE_IN, "질문 번역 (외국어 → 한국어)",
+                                System.currentTimeMillis() - t0, this.question));
+                    }));
         }
 
         // (1) 질문 분석/재작성 --------------------------------------------------
@@ -302,6 +357,12 @@ public abstract class AbstractRagPipeline implements RagPipeline {
             List<Message> history = RagPrompts.historyMessages(
                     this.request.historyOrEmpty(), this.options.maxHistoryOrDefault());
 
+            if (this.foreignLanguage) {
+                return Flux.concat(
+                        Flux.just(AgentEvent.metric("contextChars", "컨텍스트 길이", this.contextChars)),
+                        Flux.defer(() -> generateTranslated(systemPrompt, history, context, t0)));
+            }
+
             Flux<AgentEvent> tokens = ChatClient.builder(AbstractRagPipeline.this.chatModel).build()
                     .prompt()
                     .options(ChatOptions.builder().temperature(this.options.temperatureOrDefault()))
@@ -320,6 +381,34 @@ public abstract class AbstractRagPipeline implements RagPipeline {
                         return Flux.just(AgentEvent.stepDone(STEP_GENERATE, "LLM 답변 생성", this.generateMs,
                                 this.answer.length() + "자 생성"));
                     }));
+        }
+
+        /**
+         * 외국어 질문 전용 생성 경로. 토큰을 그대로 흘려보내면 번역 전 한국어 조각이 섞여 나오므로,
+         * 한국어 답변을 통으로 생성한 뒤 한 번에 영어로 번역해서 하나의 token 이벤트로 내려보낸다.
+         */
+        private Flux<AgentEvent> generateTranslated(String systemPrompt, List<Message> history,
+                String context, long t0) {
+            String korean = ChatClient.builder(AbstractRagPipeline.this.chatModel).build()
+                    .prompt()
+                    .options(ChatOptions.builder().temperature(this.options.temperatureOrDefault()))
+                    .system(systemPrompt)
+                    .messages(history)
+                    .user(RagPrompts.formatUserMessage(this.question, context))
+                    .call()
+                    .content();
+            String koreanAnswer = korean == null ? "" : korean;
+            String english = koreanAnswer.isBlank() ? "" : translateToEnglish(koreanAnswer);
+            this.answer.append(english);
+            this.generateMs = System.currentTimeMillis() - t0;
+
+            List<AgentEvent> events = new ArrayList<>();
+            if (!english.isBlank()) {
+                events.add(AgentEvent.token(english));
+            }
+            events.add(AgentEvent.stepDone(STEP_GENERATE, "LLM 답변 생성", this.generateMs,
+                    this.answer.length() + "자 생성 (한국어로 생성 후 영어로 번역)"));
+            return Flux.fromIterable(events);
         }
 
         /** 스트리밍 응답 조각 하나를 token 이벤트로. 본문이 없는 조각(마지막 usage 청크 등)은 버린다. */

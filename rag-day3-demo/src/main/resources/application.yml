@@ -30,6 +30,9 @@ spring:
 app:
   cors:
     allowed-origin: http://localhost:3000
+  # 서버 기동 시 자동으로 인덱싱할 PDF 폴더 (rag-day3-demo 기준 상대경로). TourDocumentLoader 참고.
+  tour-docs:
+    dir: docs
 
 logging:
   level:
