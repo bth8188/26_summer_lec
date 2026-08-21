@@ -94,6 +94,7 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      *
      * @return 검색에 쓸 쿼리 목록. 구현 전에는 {@code Optional.empty()}
      */
+    // 구현: 이전 대화를 참고해 LLM에게 검색용 질문 3개를 재작성시키고, 원본 질문도 목록에 포함해 함께 검색한다.
     @Override
     protected Optional<List<String>> rewriteQueries(String question, List<ChatRequest.Turn> history,
             RagOptions options) {
@@ -150,6 +151,7 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      *
      * @return 키워드로 찾은 청크. 구현 전에는 {@code Optional.empty()}
      */
+    // 구현: 질문에서 2글자 이상 단어를 추출해 청크 본문 등장 횟수를 합산 점수로 쓰고, LLM/임베딩 없이 문자열 매칭만 한다.
     @Override
     protected Optional<List<Document>> keywordSearch(String query, List<String> docIds, RagOptions options) {
         List<String> words = new ArrayList<>();
@@ -189,6 +191,7 @@ public class StudentRagPipeline extends AbstractRagPipeline {
         return Optional.of(top);
     }
 
+    /** 텍스트 안에서 word가 등장한 횟수(부분 문자열 매칭, 중복 계산 없이 순차 탐색). */
     private static int countOccurrences(String text, String word) {
         int count = 0;
         int index = 0;
@@ -223,6 +226,7 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      */
     private static final Pattern FIRST_NUMBER = Pattern.compile("\\d+");
 
+    // 구현: 후보 청크마다 LLM에게 0~10점 관련도를 채점시키고, 점수 내림차순으로 상위 topK개만 채택한다.
     @Override
     protected Optional<List<Document>> rerank(String query, List<Document> candidates, RagOptions options) {
         if (candidates.isEmpty()) {
