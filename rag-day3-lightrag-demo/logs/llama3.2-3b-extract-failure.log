@@ -1,0 +1,136 @@
+/Users/taeheebae/.local/share/uv/tools/lightrag-hku/lib/python3.14/site-packages/lightrag/lightrag.py:6078: SyntaxWarning: 'return' in a 'finally' block
+  return DeletionResult(
+WARNING: TOKEN_SECRET not set and AUTH_ACCOUNTS is not configured. Falling back to the default guest-mode JWT secret. 
+
+LightRAG log file: /Users/taeheebae/work/lecture/26_summer/rag-day3-lightrag-demo/lightrag.log
+
+[36m
+    ╔══════════════════════════════════════════════════════════════╗
+    ║                 LightRAG Server v1.5.6/0328                  ║
+    ║         Fast, Lightweight RAG Server Implementation          ║
+    ╚══════════════════════════════════════════════════════════════╝
+    [0m
+[35m
+📡 Server Configuration:[0m
+[37m    ├─ Host: [0m[33m127.0.0.1[0m
+[37m    ├─ Port: [0m[33m9621[0m
+[37m    ├─ Workers: [0m[33m1[0m
+[37m    ├─ Timeout: [0m[33m300[0m
+[37m    ├─ CORS Origins: [0m[33m*[0m
+[37m    ├─ SSL Enabled: [0m[33mFalse[0m
+[37m    ├─ Ollama Emulating Model: [0m[33mlightrag:latest[0m
+[37m    ├─ Log Level: [0m[33mINFO[0m
+[37m    ├─ Verbose Debug: [0m[33mFalse[0m
+[37m    ├─ API Key: [0m[33mNot Set[0m
+[37m    ├─ JWT Auth: [0m[33mDisabled[0m
+[37m    ├─ Max Request Body: [0m[33m1048576 bytes[0m
+[37m    ├─ Max Upload Size: [0m[33m104857600 bytes[0m
+[37m    └─ Max Pending Documents: [0m[33mUnlimited[0m
+[35m
+📂 Directory Configuration:[0m
+[37m    ├─ Working Directory: [0m[33m/Users/taeheebae/work/lecture/26_summer/rag-day3-lightrag-demo/rag_storage[0m
+[37m    └─ Input Directory: [0m[33m/Users/taeheebae/work/lecture/26_summer/rag-day3-lightrag-demo/inputs[0m
+[35m
+📊 Embedding Configuration:[0m
+[37m    ├─ Binding: [0m[33mollama[0m
+[37m    ├─ Host: [0m[33mhttp://localhost:11434[0m
+[37m    ├─ Model: [0m[33mbge-m3:latest[0m
+[37m    ├─ Dimensions: [0m[33m1024[0m
+[37m    └─ Asymmetric: [0m[33mFalse[0m
+[35m
+⚙️ RAG Configuration:[0m
+[37m    ├─ Summary Language: [0m[33mKorean[0m
+[37m    ├─ Max Parallel Insert: [0m[33m3[0m
+[37m    ├─ Chunk Size: [0m[33m1200[0m
+[37m    ├─ Chunk Overlap Size: [0m[33m100[0m
+[37m    ├─ Cosine Threshold: [0m[33m0.2[0m
+[37m    ├─ Top-K: [0m[33m40[0m
+[37m    └─ Force LLM Summary on Merge: [0m[33m8[0m
+[35m
+💾 Storage Configuration:[0m
+[37m    ├─ KV Storage: [0m[33mJsonKVStorage[0m
+[37m    ├─ Vector Storage: [0m[33mNanoVectorDBStorage[0m
+[37m    ├─ Graph Storage: [0m[33mNetworkXStorage[0m
+[37m    ├─ Document Status Storage: [0m[33mJsonDocStatusStorage[0m
+[37m    └─ Workspace: [0m[33m-[0m
+[32m
+✨ Server starting up...
+[0m
+[35m
+🌐 Server Access Information:[0m
+[37m    ├─ WebUI (local): [0m[33mhttp://127.0.0.1:9621[0m
+[37m    ├─ API Documentation: [0m[33mhttp://127.0.0.1:9621/docs[0m
+[37m    └─ Alternative Documentation: [0m[33mhttp://127.0.0.1:9621/redoc[0m
+[33m
+⚠️  Security Warning:[0m
+[37m    No authentication is configured (no API Key, no login accounts).
+    The server is bound to a loopback address ('127.0.0.1'), so it is only
+    reachable from this machine. Set LIGHTRAG_API_KEY, or AUTH_ACCOUNTS together
+    with TOKEN_SECRET, before binding to a non-loopback address (e.g. HOST=0.0.0.0).
+    [0m
+INFO: Ollama LLM Options: {'num_ctx': 32768}
+INFO: Ollama Embedding Options: {'num_ctx': 8192}
+INFO: Embedding config: binding=ollama model=bge-m3:latest embedding_dim=1024 max_token_size=8192
+INFO: Send embedding dimension: False by env var (dimensions=1024, has_param=True, binding=ollama)
+INFO: Embedding max_token_size: 8192 (from ollama provider default)
+INFO: Reranking is disabled
+INFO: [] Created new empty graph file: /Users/taeheebae/work/lecture/26_summer/rag-day3-lightrag-demo/rag_storage/graph_chunk_entity_relation.graphml
+INFO: Role LLM Configuration (initialized):
+INFO:  - extract: ollama/llama3.2:3b, host=http://localhost:11434, max_async=2, timeout=900
+INFO:  - keyword: ollama/llama3.2:3b, host=http://localhost:11434, max_async=2, timeout=900
+INFO:  - query: ollama/llama3.2:3b, host=http://localhost:11434, max_async=2, timeout=900
+INFO:  - vlm: ollama/llama3.2:3b, host=http://localhost:11434, max_async=2, timeout=900
+INFO: Role LLM Option:
+INFO:  - extract: Ollama {'num_ctx': 32768}
+INFO:  - keyword: Ollama {'num_ctx': 32768}
+INFO:  - query: Ollama {'num_ctx': 32768}
+INFO:  - vlm: Ollama {'num_ctx': 32768}
+INFO: WebUI assets mounted at /webui
+INFO: Started server process [8287]
+INFO: Waiting for application startup.
+INFO: [] Process 8287 KV load full_docs with 0 records
+INFO: [] Process 8287 KV load text_chunks with 0 records
+INFO: [] Process 8287 KV load full_entities with 0 records
+INFO: [] Process 8287 KV load full_relations with 0 records
+INFO: [] Process 8287 KV load entity_chunks with 0 records
+INFO: [] Process 8287 KV load relation_chunks with 0 records
+INFO: [] Process 8287 KV load llm_response_cache with 0 records
+INFO: [] Process 8287 doc status load doc_status with 0 records
+INFO: Application startup complete.
+INFO: Uvicorn running on http://127.0.0.1:9621 (Press CTRL+C to quit)
+INFO: 127.0.0.1:52383 - "POST /documents/scan HTTP/1.1" 200
+INFO: Manual retry d9e07010: reset 0 FAILED document(s) to PENDING (exclusive phase, no worker running)
+INFO: [File Extraction]Deferred company.txt to legacy parser
+INFO: Processing 1 document(s)
+INFO: Parsing (native): doc-bfd19e97d49fd2dc57289c3274c8cb8f
+INFO: Extracting stage 1/1: company.txt
+INFO: Processing d-id: doc-bfd19e97d49fd2dc57289c3274c8cb8f
+INFO: Chunking F: size=1200, split_only=False, overlap=100, doc_id: doc-bfd19e97d49fd2dc57289c3274c8cb8f
+INFO: extract LLM func: 2 new workers initialized (Timeouts: Func: 900s, Worker: 1800s, Health Check: 1815s)
+INFO:  == LLM cache == saving: default:extract:6c50b25e32601f783903ac2965291c10
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: Complete delimiter can not be found in extraction result
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; find LLM use <|#|> as record separators instead new-line
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Organization` @ `온도 센서, 히터 모듈 공급. 2020년부터 거래. 담당자 접점은 이민아.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Organization` @ `캡슐 홀더 금형 공급. 2025년부터 거래. 담당자 접점은 오세훈.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Organization` @ `완제품 배송 위탁. 2019년부터 거래. 담당자 접점은 오세훈.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 24/5 fields on RELATION `MCM-200`~`MCM-350`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `MCM-400 신제품 개발을 총괄하고 있는 하드웨어 설계를 담당하고 있다. 2026년 12월 출시 목표. 최대 리스크는 대림정밀의 캡슐 홀더 금형 납기 지연이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `MCM-400 신제품 개발을 총괄하고 있는 제어 소프트웨어를 담당하고 있다. 2026년 12월 출시 목표. 최대 리스크는 대림정밀의 캡슐 홀더 금형 납기 지연이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `고객센터 상담 챗봇 도입을 총괄하고 있다. 상담 이력 12만 건을 학습 데이터로 쓴다. 최대 리스크는 개인정보 비식별 처리 검토가 아직 끝나지 않은 것이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `품질 데이터 대시보드를 구축하기 위한 프로젝트 등대를 총괄하고 있다. 데이터 파이프ライン은 정해준이 지원한다. E2 오류(온도 센서 이상) 발생 추이를 실시간으로 보는 것이 목표다. 최대 리스크는 세정테크가 센서 로그 원본 데이터 제공에 아직 동의하지 않은 것이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `MCM-350 캡슐 홀더 입고가 2주 지연되었다. 대체 협력사 검토를 시작했으나 아직 결론은 없다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `모두의커피 주식회사의 대표이사이며, 2019년 서울 성수동에서 설립된 회사로, 가정용 커피머신 브랜드 MCM 시리즈를 만든다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Organization` @ `가전 제조사로 2019년 서울 성수동에서 설립된 회사로, 가정용 커피머신 브랜드 MCM 시리즈를 만든다. 대표이사는 박정우이며, 임직원은 총 84명이다. 주력 제품은 MCM-200(전자동 드립)과 MCM-350(캡슐 겸용)이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `모두의커피 주식회사의 대표이사이며, 2019년 서울 성수동에서 설립된 회사로, 가정용 커피머신 브랜드 MCM 시리즈를 만든다. 대표이사는 박정우이며, 임직원은 총 84명이다. 주력 제품은 MCM-200(전자동 드립)과 MCM-350(캡슐 겸용)이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 24/5 fields on RELATION `MCM-350`~`MCM-200`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `MCM-400 신제품 개발을 총괄하고 있는 하드웨어 설계를 담당하고 있다. 하드웨어 설계는 이민아, 제어 소프트웨어는 정해준이 담당한다. 2026년 12월 출시 목표. 최대 리스크는 대림정밀의 캡슐 홀더 금형 납기 지연이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `MCM-400 신제품 개발을 총괄하고 있는 제어 소프트웨어를 담당하고 있다. 하드웨어 설계는 이민아, 제어 소프트웨어는 정해준이 담당한다. 2026년 12월 출시 목표. 최대 리스크는 대림정밀의 캡슐 홀더 금형 납기 지연이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `고객센터 상담 챗봇 도입을 총괄하고 있다. 상담 이력 12만 건을 학습 데이터로 쓴다. 최대 리스크는 개인정보 비식별 처리 검토가 아직 끝나지 않은 것이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `품질 데이터 대시보드를 구축하기 위한 프로젝트 등대를 총괄하고 있다. 데이터 파이프라인은 정해준이 지원한다. E2 오류(온도 센서 이상) 발생 추이를 실시간으로 보는 것이 목표다. 최대 리스크는 세정테크가 센서 로그 원본 데이터 제공에 아직 동의하지 않은 것이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `MCM-350 캡슐 홀더 입고가 2주 지연되었다. 대체 협력사 검토를 시작했으나 아직 결론은 없다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `모두의커피 주식회사의 대표이사이며, 2019년 서울 성수동에서 설립된 회사로, 가정용 커피머신 브랜드 MCM 시리즈를 만든다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Organization` @ `가전 제조사로 2019년 서울 성수동에서 설립된 회사로, 가정용 커피머신 브랜드 MCM 시리즈를 만든다. 대표이사는 박정우이며, 임직원은 총 84명이다. 주력 제품은 MCM-200(전자동 드립)과 MCM-350(캡슐 겸용)이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 3/4 fields on ENTITY `Person` @ `모두의커피 주식회사의 대표이사이며, 2019년 서울 성수동에서 설립된 회사로, 가정용 커피머신 브랜드 MCM 시리즈를 만든다. 대표이사는 박정우이며, 임직원은 총 84명이다. 주력 제품은 MCM-200(전자동 드립)과 MCM-350(캡슐 겸용)이다.`
+WARNING: doc-bfd19e97d49fd2dc57289c3274c8cb8f-chunk-000: LLM output format error; found 21/5 fields on RELATION `MCM-350`~`MCM-200`
+INFO: 127.0.0.1:52582 - "GET /graph/label/list HTTP/1.1" 200
+INFO: 127.0.0.1:53224 - "GET /graph/label/list HTTP/1.1" 200
