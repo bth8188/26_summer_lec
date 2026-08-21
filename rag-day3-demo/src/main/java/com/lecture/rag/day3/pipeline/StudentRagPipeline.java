@@ -1,9 +1,11 @@
 package com.lecture.rag.day3.pipeline;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Component;
 
@@ -93,8 +95,43 @@ public class StudentRagPipeline extends AbstractRagPipeline {
     @Override
     protected Optional<List<String>> rewriteQueries(String question, List<ChatRequest.Turn> history,
             RagOptions options) {
-        // TODO(실버): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        String historyText = RagPrompts.historyAsText(history, options.maxHistoryOrDefault());
+        String prompt = """
+                당신은 한국어 문서 검색용 질의 재작성기입니다.
+
+                [이전 대화]
+                %s
+
+                [현재 질문]
+                %s
+
+                현재 질문을 독립적으로 이해할 수 있는 검색 질의 3개로 바꿔 쓰세요.
+                규칙:
+                - 법령명, 조문 번호, 날짜, 비율, 기관명은 원문 그대로 보존합니다.
+                - 서로 다른 표현을 사용하되 질문의 의미를 바꾸지 않습니다.
+                - 답을 만들거나 추측하지 않습니다.
+                - 외국어 단어나 한자를 섞지 말고 자연스러운 한국어만 사용합니다.
+                - 번호, 불릿, 설명 없이 한 줄에 하나씩만 출력합니다.
+                """.formatted(historyText.isBlank() ? "(이전 대화 없음)" : historyText, question);
+
+        String response = chatClient().prompt()
+                .options(ChatOptions.builder().temperature(0.0))
+                .user(prompt)
+                .call()
+                .content();
+
+        LinkedHashSet<String> queries = new LinkedHashSet<>();
+        if (question != null && !question.isBlank()) {
+            queries.add(question.strip());
+        }
+        if (response != null) {
+            response.lines()
+                    .map(StudentRagPipeline::cleanQueryLine)
+                    .filter(line -> !line.isBlank())
+                    .limit(3)
+                    .forEach(queries::add);
+        }
+        return Optional.of(queries.stream().limit(4).toList());
     }
 
     // =================================================================== 실버 ②
@@ -180,5 +217,12 @@ public class StudentRagPipeline extends AbstractRagPipeline {
             RagOptions options) {
         // TODO(골드): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
         return Optional.empty();
+    }
+
+    private static String cleanQueryLine(String line) {
+        return line == null ? "" : line
+                .replaceFirst("^\\s*(?:[-*•]|\\d+[.)])\\s*", "")
+                .replaceAll("^[\\\"'“”]+|[\\\"'“”]+$", "")
+                .strip();
     }
 }
