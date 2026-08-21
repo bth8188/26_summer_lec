@@ -196,6 +196,10 @@ public class IndexingService {
             if (pageNumber != null) {
                 builder.metadata("page", pageNumber);
             }
+            String article = LegalDocumentSplitter.articleNumber(chunk.getText());
+            if (article != null) {
+                builder.metadata("article", article);
+            }
             result.add(builder.build());
         }
         return result;

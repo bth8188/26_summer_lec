@@ -20,7 +20,8 @@ public enum ChunkingStrategy {
 
     TOKEN("토큰 기준 (TokenTextSplitter)", "Spring AI 기본 스플리터. chunkSize는 토큰 수 기준이다."),
     RECURSIVE("재귀 문자 분할", "문장부호 → 줄바꿈 → 공백 순으로 내려가며 자연스러운 경계에서 자른다."),
-    SLIDING("슬라이딩 윈도우", "앞 청크와 overlap 글자만큼 겹치게 잘라 문맥이 끊기는 걸 막는다.");
+    SLIDING("슬라이딩 윈도우", "앞 청크와 overlap 글자만큼 겹치게 잘라 문맥이 끊기는 걸 막는다."),
+    LEGAL("법령 조문 분할", "제○조·제○조의○ 경계를 보존하고, 긴 조문만 문장 단위로 다시 자른다.");
 
     private final String label;
     private final String description;
@@ -66,6 +67,7 @@ public enum ChunkingStrategy {
             case RECURSIVE -> splitEach(documents, new RecursiveCharacterSplitter(chunkSize));
             case SLIDING -> splitEach(documents,
                     new SlidingWindowSplitter(chunkSize, Math.max(1, chunkSize - overlap)));
+            case LEGAL -> splitEach(documents, new LegalDocumentSplitter(chunkSize));
         };
     }
 

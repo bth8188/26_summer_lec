@@ -44,7 +44,8 @@ run.bat         :: Windows
 
 이 제출에서 사용한 은행법 관련 원문 5개는 [`source-docs`](source-docs/)에 포함되어 있다.
 최초 실행 때 백엔드와 프론트엔드를 실행한 뒤 왼쪽 지식 베이스 패널에서 5개 파일을 모두 업로드한다.
-권장 인덱싱 설정은 `TOKEN`, 청크 크기 `400`, 오버랩 `60`이다.
+비교 기준은 `TOKEN`, 청크 크기 `400`이고, 제출 파이프라인 시연 권장은
+법령 구조를 보존하는 커스텀 `LEGAL`, 청크 크기 `1400자`다. `TOKEN`과 `LEGAL`은 오버랩을 사용하지 않는다.
 인덱싱 결과는 PGVector에 저장되므로 이후 백엔드를 재시작해도 문서와 청크가 그대로 복원된다.
 
 ## 구조
@@ -59,7 +60,7 @@ day3/
 ├─ knowledge/     문서 인덱싱
 │   ├─ KnowledgeBase   PGVector 검색 + 재시작 시 청크/문서 목록 복원
 │   ├─ IndexingService 읽기 → 청킹 → 임베딩 (진행 상황을 이벤트로 흘려보냄)
-│   └─ ChunkingStrategy TOKEN / RECURSIVE / SLIDING (Day2 M2.1에서 만든 것들)
+│   └─ ChunkingStrategy TOKEN / RECURSIVE / SLIDING / LEGAL(법령 조문 단위 커스텀)
 ├─ pipeline/      RAG 실행
 │   ├─ RagPipeline        인터페이스 — @Component만 붙이면 UI 드롭다운에 자동 등록
 │   ├─ AbstractRagPipeline 공통 흐름(검색→컨텍스트→스트리밍) + 확장 훅
