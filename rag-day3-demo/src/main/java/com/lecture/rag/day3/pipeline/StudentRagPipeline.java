@@ -285,10 +285,26 @@ public class StudentRagPipeline extends AbstractRagPipeline {
      *
      * @return 사용자에게 보여줄 검증 결과 한 줄. 구현 전에는 {@code Optional.empty()}
      */
+    // 구현: 생성된 답변의 모든 문장이 근거 컨텍스트에 실제로 있는지 LLM에게 재확인시켜 통과/주의 판정을 받는다.
     @Override
     protected Optional<String> selfCheck(String question, String answer, List<SourceRef> sources,
             RagOptions options) {
-        // TODO(골드): 위 힌트를 참고해 구현하고, 아래 줄을 지우세요.
-        return Optional.empty();
+        String context = RagPrompts.formatContext(sources);
+        String prompt = """
+                [근거]
+                %s
+
+                [답변]
+                %s
+
+                답변의 모든 문장이 근거에 실제로 있는 내용인지 판정하세요.
+                형식: '통과' 또는 '주의: <근거에 없는 내용 요약>' 한 줄로만 답하세요.
+                """.formatted(context, answer);
+
+        String response = chatClient().prompt().user(prompt).call().content();
+        if (response == null || response.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(response.strip());
     }
 }
